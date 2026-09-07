@@ -4,6 +4,7 @@ from pathlib import Path
 import gradio as gr
 from reference_asr import (IDLE_STATUS, LANGUAGES, result_is_current,
                            transcribe_reference, validate_reference_sources)
+from voice_library import VoiceLibrary, VoiceLibraryError, describe_voice
 
 # Gradio 6.5.1 exposes its shared locale store from the bundled i18n module.
 # Resolve the hashed filename from this installation instead of editing the package.
@@ -85,6 +86,7 @@ CSS = """
 #output-status textarea {font-size: 14px; line-height: 1.85;}
 #studio-output {position: sticky; top: 18px;}
 .studio-tip {padding: 12px 14px; border-radius: 10px; background: var(--background-fill-secondary); line-height: 1.8;}
+.voice-library-box {padding: 14px; border-radius: 12px; background: var(--background-fill-secondary);}
 @media (max-width: 800px) {
  .gradio-container {padding: 12px !important;}
  #studio-hero {padding: 20px;}
@@ -100,7 +102,7 @@ def select_example(name):
     # an unrelated reference recording from an earlier dialogue.
     return (count, text, *([None] * 5), *([""] * 5),
             *[gr.update(visible=i < count) for i in range(5)],
-            *([None] * 5), *([IDLE_STATUS] * 5))
+            *([None] * 5), *([IDLE_STATUS] * 5), *([""] * 5))
 
 
 def prepare_transcription(audio_path):
@@ -115,6 +117,64 @@ def apply_transcription(audio_path, current_text, result):
     if (current_text or "").strip():
         return gr.skip(), "已保留你手动填写的原文。", audio_path
     return result["text"], result["status"], audio_path
+
+
+def voice_library_summary() -> str:
+    try:
+        voices = VoiceLibrary().list_voices()
+    except VoiceLibraryError as exc:
+        return f"音色库暂时不可用：{exc}"
+    builtins = sum(bool(voice.get("builtin")) for voice in voices)
+    personal = len(voices) - builtins
+    return f"音色库现有 **{len(voices)}** 个音色：内置 {builtins} 个，我的音色 {personal} 个。"
+
+
+def current_voice_choices():
+    try:
+        return VoiceLibrary().choices()
+    except VoiceLibraryError:
+        return [("音色库暂时不可用", "")]
+
+
+def select_library_voice(voice_id):
+    try:
+        voice = VoiceLibrary().get(voice_id)
+        if voice is None:
+            return None, "", None, IDLE_STATUS, "自动识别"
+        language = voice.get("language", "自动识别")
+        if language not in LANGUAGES:
+            language = "自动识别"
+        return (voice["audio_path"], voice["prompt_text"], voice["audio_path"],
+                describe_voice(voice), language)
+    except VoiceLibraryError as exc:
+        return None, "", None, f"选择音色失败：{exc}", "自动识别"
+
+
+def save_library_voice(audio_path, prompt_text, name, language, rights_confirmed):
+    try:
+        voice = VoiceLibrary().save_user_voice(
+            audio_path, prompt_text, name, language, rights_confirmed=rights_confirmed
+        )
+        choices = VoiceLibrary().choices()
+        status = f"已保存“{voice['name']}”。以后可直接从音色库选择，不需要重新上传或识别。"
+        return (status, gr.update(choices=choices, value=voice["id"]), voice_library_summary(),
+                voice["audio_path"], voice["prompt_text"], voice["audio_path"], "")
+    except VoiceLibraryError as exc:
+        return (f"保存失败：{exc}", gr.update(), voice_library_summary(),
+                gr.skip(), gr.skip(), gr.skip(), gr.skip())
+    except Exception:
+        import logging
+        logging.exception("Saving reference voice failed")
+        return ("保存失败：服务器无法写入音色库，请管理员检查日志。", gr.update(),
+                voice_library_summary(), gr.skip(), gr.skip(), gr.skip(), gr.skip())
+
+
+def refresh_voice_library():
+    try:
+        choices = VoiceLibrary().choices()
+        return (*[gr.update(choices=choices) for _ in range(5)], voice_library_summary())
+    except VoiceLibraryError as exc:
+        return (*[gr.update() for _ in range(5)], f"刷新失败：{exc}")
 
 
 def build_studio(args, generate, update_panels, max_tokens):
@@ -137,10 +197,27 @@ def build_studio(args, generate, update_panels, max_tokens):
                 with gr.Accordion("② 参考音色 · 可选，不上传也能生成", open=False):
                     gr.Markdown("上传参考音频后，**服务器会自动识别并填写原文**，无需逐字输入。识别完成后核对一下，即可沿用这个声音续说新台词。\n\n"
                                 "建议使用 5～30 秒的清晰单人人声；自动识别最长支持 2 分钟。音频仅在本服务器处理，不发送给第三方。")
+                    with gr.Group(elem_classes="voice-library-box"):
+                        library_status = gr.Markdown(voice_library_summary())
+                        with gr.Row():
+                            refresh_library = gr.Button("刷新音色列表", size="sm")
+                            rights_confirmed = gr.Checkbox(
+                                label="我确认拥有所保存声音的使用授权",
+                                info="只在把上传音频保存为“我的音色”时需要勾选。",
+                            )
+                        gr.Markdown("内置音色均显示来源与许可证；“我的音色”永久保存在本服务器。")
                     refs, prompts, panels, sources, asr_statuses, languages, retries = [], [], [], [], [], [], []
+                    voice_selects, voice_names, save_buttons = [], [], []
+                    initial_voice_choices = current_voice_choices()
                     for idx in range(1, 6):
                         with gr.Group(visible=idx <= 2) as panel:
                             gr.Markdown(f"**说话人 {idx} · [S{idx}]**")
+                            voice_selects.append(gr.Dropdown(
+                                choices=initial_voice_choices,
+                                value="",
+                                label=f"从音色库选择 · 说话人 {idx}",
+                                info="选择后会自动填入参考音频和已保存的原文。",
+                            ))
                             refs.append(gr.Audio(label=f"说话人 {idx} 的参考音频", type="filepath",
                                 sources=["upload"], buttons=["download"], elem_id=f"reference-{idx}"))
                             languages.append(gr.Dropdown(list(LANGUAGES), value="自动识别",
@@ -150,6 +227,13 @@ def build_studio(args, generate, update_panels, max_tokens):
                                 placeholder="上传音频后自动填写，也可手动输入。这里是参考音频的原话，不是新台词。",
                                 info="请核对人名、数字和漏字。更换音频或重新识别会清空原文。"))
                             retries.append(gr.Button("重新识别原文（覆盖现有文字）", size="sm"))
+                            with gr.Row():
+                                voice_names.append(gr.Textbox(
+                                    label="保存为我的音色",
+                                    placeholder="例如：我的播客主持人",
+                                    max_lines=1,
+                                ))
+                                save_buttons.append(gr.Button("保存当前音色", size="sm"))
                             sources.append(gr.State(None))
                         panels.append(panel)
                 with gr.Accordion("高级设置 · 初次使用保持默认即可", open=False):
@@ -193,9 +277,26 @@ def build_studio(args, generate, update_panels, max_tokens):
                 fn=apply_transcription, inputs=[ref, prompt, result],
                 outputs=[prompt, asr_status, source], queue=False, trigger_mode="multiple")
             prompt.input(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
+        for selector, ref, prompt, source, asr_status, language in zip(
+                voice_selects, refs, prompts, sources, asr_statuses, languages):
+            selection = selector.change(fn=select_library_voice, inputs=[selector],
+                outputs=[ref, prompt, source, asr_status, language], queue=False)
+            # Gradio copies returned files into its cache. Record that effective
+            # path after the Audio component has processed the library file.
+            selection.then(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
+            ref.input(fn=lambda: "", outputs=[selector], queue=False)
+        for selector, ref, prompt, source, asr_status, language, name, save in zip(
+                voice_selects, refs, prompts, sources, asr_statuses, languages, voice_names, save_buttons):
+            saved = save.click(fn=save_library_voice,
+                inputs=[ref, prompt, name, language, rights_confirmed],
+                outputs=[asr_status, selector, library_status, ref, prompt, source, name], queue=False)
+            saved.then(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
+        refresh_library.click(fn=refresh_voice_library,
+            outputs=[*voice_selects, library_status], queue=False)
         for name, button in zip(EXAMPLES, example_buttons):
             button.click(fn=lambda name=name: select_example(name),
-                outputs=[speaker_count, dialogue, *refs, *prompts, *panels, *sources, *asr_statuses], queue=False)
+                outputs=[speaker_count, dialogue, *refs, *prompts, *panels, *sources, *asr_statuses,
+                         *voice_selects], queue=False)
 
         def generate_with_progress(count, *inputs, progress=gr.Progress()):
             inputs, source_paths = inputs[:-5], inputs[-5:]

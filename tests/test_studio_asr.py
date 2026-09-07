@@ -9,7 +9,7 @@ class StudioAsrTests(unittest.TestCase):
     def test_examples_clear_all_transcripts_and_sources(self):
         for name in EXAMPLES:
             values = select_example(name)
-            self.assertEqual(len(values), 27)
+            self.assertEqual(len(values), 32)
             self.assertEqual(list(values[2:7]), [None] * 5)
             self.assertEqual(list(values[7:12]), [""] * 5)
             self.assertEqual(list(values[17:22]), [None] * 5)
@@ -35,6 +35,8 @@ class StudioAsrTests(unittest.TestCase):
         workers = [f for f in functions if f.name == "transcribe_reference"]
         self.assertEqual(len(workers), 5)
         self.assertTrue(all(f.concurrency_id == "speech-generation" for f in workers))
+        self.assertEqual(sum(f.name == "select_library_voice" for f in functions), 5)
+        self.assertEqual(sum(f.name == "save_library_voice" for f in functions), 5)
         generate = next(f for f in functions if f.name == "generate_with_progress")
         self.assertEqual(len(generate.inputs), 24)
         # Validation protects generation even if the user clicks during ASR.

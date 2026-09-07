@@ -73,6 +73,18 @@ python -m venv .venv
 
 可通过 `MOSS_ASR_MODEL`、`MOSS_ASR_PYTHON`、`MOSS_ASR_DEVICE`（`cuda` / `cpu`）、`MOSS_ASR_DEVICE_INDEX` 覆盖路径及设备。默认模型目录为项目同级 `models/faster-whisper-large-v3-turbo`，CPU 模式使用 INT8。`reference_asr.py` 负责调用与错误提示，`scripts/asr_worker.py` 负责识别；异常会在 `service.log` 中带 `[ASR]` 标记，不记录原文内容。
 
+### 持久化音色库
+
+上传音频并核对原文后，可在页面中命名保存；下次直接从“从音色库选择”列表使用。数据默认保存在 `C:\AI\MOSS-TTSD\voice_library_data`，服务重启不会丢失。建议定期备份该目录，也可在启动服务前通过 `YUNTU_VOICE_LIBRARY_DIR` 指定独立数据盘。
+
+安装 30 个 AISHELL-3 开源中文音色：
+
+```powershell
+.venv\Scripts\python.exe scripts\install_builtin_voices.py --count 30
+```
+
+安装器支持已完成音色跳过、连接重试和重复执行。AISHELL-3 来源、转换方式与 Apache 2.0 许可说明见 `VOICE_LIBRARY_NOTICE.md`。
+
 界面代码位于 `studio_ui.py`，推理与中文错误提示位于 `gradio_demo.py`。播放器、上传及加载提示使用随 Gradio 6.5.1 安装的简体中文语言包；升级 Gradio 后需要再次验证语言模块的导出接口。
 
 ## 批处理

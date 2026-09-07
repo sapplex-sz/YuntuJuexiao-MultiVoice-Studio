@@ -9,6 +9,7 @@ outputs/
 setup-status.txt
 wheelhouse/
 models/
+voice_library_data/
 *.partial
 *.download
 .weight-parts/

@@ -19,3 +19,9 @@ The local reference-audio transcription feature uses faster-whisper and
 CTranslate2. Their model and software licenses remain with their respective
 authors. Model weights are downloaded separately and are not distributed in
 this source repository.
+
+Optional runtime voice-library data:
+AISHELL-3, published by Beijing Shell Shell Technology Co., Ltd., is available
+from OpenSLR SLR93 under the Apache License 2.0. Selected anonymous test clips
+may be installed at runtime; they are not bundled in this source repository.
+See VOICE_LIBRARY_NOTICE.md for attribution and transformation details.
