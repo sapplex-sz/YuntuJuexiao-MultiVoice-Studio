@@ -118,7 +118,7 @@ class VoiceLibrary:
         return sorted(voices, key=lambda item: (not bool(item.get("builtin")), item.get("name", "")))
 
     def choices(self) -> list[tuple[str, str]]:
-        choices = [("不使用音色库", "")]
+        choices = [("自动分配声音", "")]
         for voice in self.list_voices():
             prefix = "内置" if voice.get("builtin") else "我的"
             choices.append((f"{prefix}｜{voice['name']}", voice["id"]))

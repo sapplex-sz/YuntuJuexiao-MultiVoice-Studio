@@ -12,6 +12,7 @@ def main():
     parser.add_argument("--language", default="auto")
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     parser.add_argument("--device-index", type=int, default=0)
+    parser.add_argument("--timestamps", action="store_true", help="Return word timings for generated-speech verification.")
     args = parser.parse_args()
     # Reuse the tested CUDA 12 / cuDNN 9 DLLs without importing Torch or
     # installing a second CUDA runtime into the speech generation environment.
@@ -36,7 +37,7 @@ def main():
     duration = len(audio) / 16000
     if duration < 0.5:
         return {"error": "参考音频太短，请使用至少半秒的清晰人声。"}
-    if duration > 120:
+    if duration > (660 if args.timestamps else 120):
         return {"error": "自动识别限 2 分钟内的参考音频。建议截取 5～30 秒的单人人声，或手动填写原文。"}
     if not np.isfinite(audio).all() or not np.any(audio):
         return {"error": "音频为空或没有有效声音，请重新上传。"}
@@ -47,11 +48,16 @@ def main():
                          cpu_threads=8, num_workers=1, local_files_only=True)
     segments, info = model.transcribe(audio, language=None if args.language == "auto" else args.language,
                                      task="transcribe", beam_size=5, vad_filter=True,
-                                     condition_on_previous_text=False)
+                                     word_timestamps=args.timestamps, condition_on_previous_text=False)
+    segments = list(segments)
     text = "".join(segment.text for segment in segments).strip()
+    words = [{"word": word.word, "start": word.start, "end": word.end}
+             for segment in segments for word in (segment.words or [])]
     if info.language == "zh":
         text = OpenCC("t2s").convert(text)
-    return {"text": text, "language": info.language, "duration": duration}
+        for word in words:
+            word["word"] = OpenCC("t2s").convert(word["word"])
+    return {"text": text, "language": info.language, "duration": duration, "words": words}
 
 
 if __name__ == "__main__":

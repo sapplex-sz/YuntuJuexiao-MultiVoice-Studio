@@ -37,6 +37,8 @@ class StudioAsrTests(unittest.TestCase):
         self.assertTrue(all(f.concurrency_id == "speech-generation" for f in workers))
         self.assertEqual(sum(f.name == "select_library_voice" for f in functions), 5)
         self.assertEqual(sum(f.name == "save_library_voice" for f in functions), 5)
+        apply_voice = next(f for f in functions if f.name == "apply_gallery_voice")
+        self.assertEqual(len(apply_voice.outputs), 37)
         generate = next(f for f in functions if f.name == "generate_with_progress")
         self.assertEqual(len(generate.inputs), 24)
         # Validation protects generation even if the user clicks during ASR.

@@ -58,6 +58,11 @@ new MutationObserver(records => {
   }
 }).observe(document.body, {subtree:true, childList:true, characterData:true,
   attributes:true, attributeFilter:['aria-label','title','alt']});
+document.addEventListener('play', event => {
+ if (event.target instanceof HTMLAudioElement) {
+   document.querySelectorAll('audio').forEach(audio => { if(audio !== event.target) audio.pause(); });
+ }
+}, true);
 </script>
 """
 
@@ -68,31 +73,62 @@ EXAMPLES = {
 }
 
 CSS = """
-.gradio-container {max-width: 1280px !important; margin: auto; padding: 24px !important;
-  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif !important;
-  --body-text-color-subdued: #596579; --block-info-text-color: #596579;}
-.dark .gradio-container {--body-text-color-subdued: #bbc8d8; --block-info-text-color: #bbc8d8;}
-#studio-hero {padding: 28px 30px; border-radius: 20px; background: #edf7f3;
-  border: 1px solid #d4e8de; margin-bottom: 8px; color: #183c32;}
-#studio-hero h1 {font-size: clamp(24px,3vw,32px); line-height: 1.4; margin: 6px 0 10px; color: #183c32;}
-#studio-hero p {font-size: 15px; line-height: 1.8; margin: 0; color: #46675b;}
-.studio-eyebrow {font-size: 12px; letter-spacing: 1px; font-weight: 600;}
-#studio-steps {padding: 8px 4px; color: #52685d;}
-#studio-input, #studio-output {border: 1px solid var(--border-color-primary); border-radius: 18px;
-  padding: 22px; background: var(--block-background-fill); min-width: 0;}
-#dialogue textarea {font-size: 16px; line-height: 1.85;}
-#run-btn {min-height: 52px; font-size: 17px; border-radius: 12px; background: #166853; color: white; border: 0;}
-#run-btn:hover {background: #105340;}
-#output-status textarea {font-size: 14px; line-height: 1.85;}
-#studio-output {position: sticky; top: 18px;}
-.studio-tip {padding: 12px 14px; border-radius: 10px; background: var(--background-fill-secondary); line-height: 1.8;}
-.voice-library-box {padding: 14px; border-radius: 12px; background: var(--background-fill-secondary);}
-@media (max-width: 800px) {
- .gradio-container {padding: 12px !important;}
- #studio-hero {padding: 20px;}
- #studio-input, #studio-output {padding: 16px;}
- #studio-output {position: static;}
-}
+.gradio-container {max-width:1240px!important;margin:auto;padding:24px 32px!important;
+ font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif!important;
+ --body-text-color:#253b35;--body-text-color-subdued:#62756d;--block-info-text-color:#62756d;
+ --background-fill-primary:#f7f9f8;--background-fill-secondary:#f1f5f3;
+ --block-background-fill:#fff;--block-border-color:#e1e8e4;
+ --border-color-primary:#dce5df;--input-border-color:#dce5df;
+ --color-accent:#19674f;--slider-color:#19674f;--button-primary-background-fill:#19674f;
+ --button-primary-text-color:white;}
+.gradio-container .main {padding:0!important;max-width:none!important;}
+.gradio-container .html-container {padding:0!important;}
+.gradio-container input[type=radio]:checked {background-color:#19674f!important;border-color:#19674f!important;}
+#brand {display:flex;align-items:center;justify-content:space-between;padding:4px 0 20px;border-bottom:1px solid #dce5df;}
+#brand h1 {font-size:22px;font-weight:650;letter-spacing:-.5px;margin:0;color:#193e31;}
+#brand p {font-size:13px;color:#62756d;margin:5px 0 0;}
+.brand-note {font-size:12px;color:#62756d;border:1px solid #dce5df;padding:6px 12px;border-radius:99px;}
+.tab-nav {border-bottom:1px solid #dce5df!important;gap:24px!important;margin-bottom:20px!important;}
+.tab-nav button {font-size:15px!important;padding:14px 4px!important;border-radius:0!important;}
+.tab-nav button.selected {color:#19674f!important;border-bottom:3px solid #19674f!important;background:transparent!important;}
+#studio-layout {gap:22px;align-items:flex-start;}
+#script-column {min-width:0;gap:18px;}
+.surface {padding:22px!important;border:1px solid #e1e8e4!important;border-radius:14px!important;background:white!important;gap:14px!important;}
+.surface h2 {font-size:18px;margin:0 0 4px!important;font-weight:650;}
+.surface h3 {font-size:15px;margin:0!important;}
+#dialogue textarea {font-size:16px;line-height:1.95;padding:16px;min-height:230px;}
+#script-meta {font-size:12px;color:#62756d;}
+#studio-output {position:sticky;top:20px;min-width:0;}
+#run-btn {min-height:48px;background:#19674f!important;border:0;color:white!important;border-radius:10px;font-size:16px;font-weight:600;}
+#run-btn:hover {background:#12533f!important;}
+#output-status textarea {font-size:13px;line-height:1.8;border:0!important;background:#f5f8f6!important;}
+.role-card {border-top:1px solid #e6ece8;padding:14px 0 2px!important;background:white!important;gap:10px!important;}
+.role-card:first-child {border-top:0;}
+.role-title {font-size:13px;color:#19674f;font-weight:650;}
+.voice-preview {background:#f5f8f6;border-radius:10px;padding:10px 12px;font-size:12px;color:#62756d;}
+.voice-preview audio {display:block;width:100%;height:36px;margin-top:6px;}
+.voice-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+.voice-card {border:1px solid #dce5df;border-radius:12px;padding:18px;background:white;min-width:0;}
+.voice-card h3 {font-size:15px;margin:0 0 8px;color:#193e31;}
+.voice-card p {font-size:12px;color:#62756d;line-height:1.7;margin:8px 0;}
+.voice-card audio {display:block;width:100%;height:36px;margin:12px 0;}
+.voice-card button {width:100%;border:1px solid #cbded3;border-radius:8px;background:#edf5f0;color:#195c44;padding:8px 10px;margin-top:12px;font-size:13px;cursor:pointer;}
+.voice-card button:hover {background:#dfeee5;}
+.gradio-container input[type=radio] {accent-color:#19674f!important;}
+.voice-source {font-size:11px;color:#62756d;}
+#library-intro h2 {font-size:22px;margin:0 0 6px;}
+#library-intro p,#library-status {color:#62756d;font-size:13px;}
+.empty-voice {padding:10px 12px;color:#62756d;background:#f5f8f6;border-radius:8px;font-size:12px;}
+#studio-footer {padding:20px 0 4px;text-align:center;color:#73837b;font-size:12px;}
+#studio-footer a {color:#526e60;}
+.gradio-container button:focus-visible,.gradio-container input:focus-visible,.gradio-container textarea:focus-visible {outline:2px solid #19674f!important;outline-offset:3px;}
+@media(max-width:800px){.gradio-container{padding:16px!important;}#brand{align-items:flex-start;}#brand h1{font-size:18px;}.brand-note{display:none;}
+ #studio-layout{flex-direction:column;}#studio-output,#script-column{width:100%;position:static;flex-basis:auto!important;}
+ .surface{padding:16px!important;}.voice-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:520px){.voice-grid{grid-template-columns:1fr;}#dialogue textarea{min-height:190px;}}
+.dark .gradio-container {--body-text-color:#253b35;--body-text-color-subdued:#62756d;
+ --background-fill-primary:#f7f9f8;--background-fill-secondary:#f1f5f3;--block-label-text-color:#253b35;
+ --input-background-fill:white;--input-text-color:#253b35;--block-title-text-color:#253b35;}
 """
 
 
@@ -144,7 +180,7 @@ def select_library_voice(voice_id):
         language = voice.get("language", "自动识别")
         if language not in LANGUAGES:
             language = "自动识别"
-        return (voice["audio_path"], voice["prompt_text"], voice["audio_path"],
+        return (audio_value(voice["audio_path"]), voice["prompt_text"], voice["audio_path"],
                 describe_voice(voice), language)
     except VoiceLibraryError as exc:
         return None, "", None, f"选择音色失败：{exc}", "自动识别"
@@ -158,7 +194,7 @@ def save_library_voice(audio_path, prompt_text, name, language, rights_confirmed
         choices = VoiceLibrary().choices()
         status = f"已保存“{voice['name']}”。以后可直接从音色库选择，不需要重新上传或识别。"
         return (status, gr.update(choices=choices, value=voice["id"]), voice_library_summary(),
-                voice["audio_path"], voice["prompt_text"], voice["audio_path"], "")
+                audio_value(voice["audio_path"]), voice["prompt_text"], voice["audio_path"], "")
     except VoiceLibraryError as exc:
         return (f"保存失败：{exc}", gr.update(), voice_library_summary(),
                 gr.skip(), gr.skip(), gr.skip(), gr.skip())
@@ -177,96 +213,166 @@ def refresh_voice_library():
         return (*[gr.update() for _ in range(5)], f"刷新失败：{exc}")
 
 
+
+def voice_audio_html(voice):
+    from html import escape
+    from urllib.parse import quote
+    path = Path(voice["audio_path"]).as_posix()
+    url = "/gradio_api/file=" + quote(path, safe="/:")
+    return ('<audio controls preload="metadata" aria-label="试听：' + escape(voice["name"], quote=True) +
+            '" src="' + escape(url, quote=True) + '"></audio>')
+
+
+def preview_voice(voice_id):
+    from html import escape
+    try:
+        voice = VoiceLibrary().get(voice_id)
+        if voice:
+            return ('<div class="voice-preview">音色原声试听 · ' +
+                    escape(voice["name"]) + voice_audio_html(voice) + '</div>')
+    except VoiceLibraryError:
+        pass
+    return '<div class="empty-voice">自动分配声音；选择音色后可在这里试听。</div>'
+
+
+def library_gallery(query="", category="全部"):
+    from html import escape
+    try:
+        voices = VoiceLibrary().list_voices()
+    except VoiceLibraryError as exc:
+        return '<p>' + escape(str(exc)) + '</p>'
+    cards = []
+    for v in voices:
+        if category == "我的音色" and v.get("builtin"):
+            continue
+        if category == "内置音色" and not v.get("builtin"):
+            continue
+        if query.strip().casefold() not in (v["name"] + " " + v.get("source", "")).casefold():
+            continue
+        cards.append('<article class="voice-card"><h3>' + escape(v["name"]) + '</h3><p>' +
+            ('内置音色' if v.get("builtin") else '我的音色') + ' · ' +
+            str(round(v.get("duration_seconds", 0), 1)) + ' 秒参考片段</p>' +
+            voice_audio_html(v) + '<p>' + escape(v["prompt_text"]) + '</p><div class="voice-source">' +
+            escape(v.get("source", "")) + ' · ' + escape(v.get("license", "")) + '</div>' +
+            '<button type="button" data-voice="' + escape(v["id"], quote=True) + '" aria-label="使用音色：' +
+            escape(v["name"], quote=True) + '">使用这个音色</button></article>')
+    return '<div class="voice-grid">' + ''.join(cards) + '</div>' if cards else '<p class="empty-voice">没有找到音色。可以换个关键词，或在创作台上传并保存自己的声音。</p>'
+
+
+def script_summary(text, requested=0):
+    from speech_guard import estimate_seconds, generation_budget, normalized
+    seconds = estimate_seconds(text)
+    limit = (generation_budget(text, requested) - 16) / 12.5
+    return f"{len(normalized(text))} 字符 · 预计成品约 {max(1, round(seconds * .8))}–{round(seconds * 1.2)} 秒 · 生成保护上限约 {limit:.0f} 秒"
+
+
+def audio_value(path):
+    # Returning decoded audio lets Gradio create the canonical cache URL, rather
+    # than reusing a FileData URL relative to /gradio_api/run/predict/.
+    import soundfile as sf
+    samples, rate = sf.read(path, dtype="float32")
+    return rate, samples
+
+
 def build_studio(args, generate, update_panels, max_tokens):
     with gr.Blocks(title="云途觉晓多人云音创作平台") as demo:
-        gr.HTML('''<div id="studio-hero"><div class="studio-eyebrow">云途觉晓 · 多人云音创作平台</div>
-          <h1>把文字，变成有声音的对话。</h1>
-          <p>支持单人朗读、多人对话和参考音色续说。写好台词，就可以开始。</p></div>''')
-        gr.Markdown("**① 写台词**　→　**② 按需设置音色**　→　**③ 生成并试听**", elem_id="studio-steps")
-        with gr.Row(equal_height=False):
-            with gr.Column(scale=3, min_width=320, elem_id="studio-input"):
-                gr.Markdown("## ① 写下你想说的话")
-                with gr.Row():
-                    example_buttons = [gr.Button(name, size="sm", min_width=0) for name in EXAMPLES]
-                gr.Markdown("点击示例即可填入台词，同时清空已有参考音色。")
-                speaker_count = gr.Slider(1, 5, value=2, step=1, label="说话人数",
-                    info="支持 1～5 人。台词中的 [S1] 对应说话人 1，[S2] 对应说话人 2。")
-                dialogue = gr.Textbox(value=EXAMPLES["双人对话"][1], label="对话台词", lines=6,
-                    placeholder="[S1]你好，欢迎来到今天的节目。\n[S2]很高兴和大家见面。",
-                    info="每次换人说话，在句首加上对应标记。单人朗读也需要 [S1]。", elem_id="dialogue")
-                with gr.Accordion("② 参考音色 · 可选，不上传也能生成", open=False):
-                    gr.Markdown("上传参考音频后，**服务器会自动识别并填写原文**，无需逐字输入。识别完成后核对一下，即可沿用这个声音续说新台词。\n\n"
-                                "建议使用 5～30 秒的清晰单人人声；自动识别最长支持 2 分钟。音频仅在本服务器处理，不发送给第三方。")
-                    with gr.Group(elem_classes="voice-library-box"):
-                        library_status = gr.Markdown(voice_library_summary())
-                        with gr.Row():
-                            refresh_library = gr.Button("刷新音色列表", size="sm")
-                            rights_confirmed = gr.Checkbox(
-                                label="我确认拥有所保存声音的使用授权",
-                                info="只在把上传音频保存为“我的音色”时需要勾选。",
-                            )
-                        gr.Markdown("内置音色均显示来源与许可证；“我的音色”永久保存在本服务器。")
-                    refs, prompts, panels, sources, asr_statuses, languages, retries = [], [], [], [], [], [], []
-                    voice_selects, voice_names, save_buttons = [], [], []
-                    initial_voice_choices = current_voice_choices()
-                    for idx in range(1, 6):
-                        with gr.Group(visible=idx <= 2) as panel:
-                            gr.Markdown(f"**说话人 {idx} · [S{idx}]**")
-                            voice_selects.append(gr.Dropdown(
-                                choices=initial_voice_choices,
-                                value="",
-                                label=f"从音色库选择 · 说话人 {idx}",
-                                info="选择后会自动填入参考音频和已保存的原文。",
-                            ))
-                            refs.append(gr.Audio(label=f"说话人 {idx} 的参考音频", type="filepath",
-                                sources=["upload"], buttons=["download"], elem_id=f"reference-{idx}"))
-                            languages.append(gr.Dropdown(list(LANGUAGES), value="自动识别",
-                                label="参考音频语言", info="通常无需选择；识别不准时可指定语言后重新识别。"))
-                            asr_statuses.append(gr.Markdown(IDLE_STATUS))
-                            prompts.append(gr.Textbox(label=f"说话人 {idx} 的参考原文", lines=2,
-                                placeholder="上传音频后自动填写，也可手动输入。这里是参考音频的原话，不是新台词。",
-                                info="请核对人名、数字和漏字。更换音频或重新识别会清空原文。"))
-                            retries.append(gr.Button("重新识别原文（覆盖现有文字）", size="sm"))
+        gr.HTML('<header id="brand"><div><h1>云途觉晓多人云音创作平台</h1><p>让每个角色，都有自己的声音。</p></div><span class="brand-note">多人配音 · 本地创作</span></header>')
+        with gr.Tabs() as workspace_tabs:
+            with gr.Tab("创作台", id="create"):
+                with gr.Row(equal_height=False, elem_id="studio-layout"):
+                    with gr.Column(scale=7, min_width=360, elem_id="script-column"):
+                        with gr.Column(elem_classes="surface"):
+                            gr.Markdown("## 01  对话台词")
                             with gr.Row():
-                                voice_names.append(gr.Textbox(
-                                    label="保存为我的音色",
-                                    placeholder="例如：我的播客主持人",
-                                    max_lines=1,
-                                ))
-                                save_buttons.append(gr.Button("保存当前音色", size="sm"))
-                            sources.append(gr.State(None))
-                        panels.append(panel)
-                with gr.Accordion("高级设置 · 初次使用保持默认即可", open=False):
-                    normalize = gr.Checkbox(value=True, label="自动整理台词格式（推荐）",
-                        info="整理标点、说话人标记和连续台词。")
-                    resample = gr.Checkbox(value=False, label="统一参考音频采样率",
-                        info="多段参考音频采样率不一致时可开启。")
-                    temperature = gr.Slider(0.1, 3.0, value=1.1, step=0.05, label="语气变化程度",
-                        info="数值越高，表达变化越多；过高可能影响稳定性。默认 1.1。")
-                    top_p = gr.Slider(0.1, 1.0, value=0.9, step=0.01, label="候选概率范围",
-                        info="控制候选声音的累计概率范围。默认 0.9，一般无需调整。")
-                    top_k = gr.Slider(1, 200, value=50, step=1, label="候选数量",
-                        info="每一步最多考虑多少种候选声音。默认 50。")
-                    repetition = gr.Slider(0.8, 2.0, value=1.1, step=0.05, label="重复抑制强度",
-                        info="略微提高可减少重复；过高可能影响自然度。默认 1.1。")
-                    length = gr.Slider(256, 8192, value=max_tokens, step=1, label="生成长度上限",
-                        info="这是生成步数，不是秒数。达到上限可能截断台词；长文本可适当提高。")
-                run = gr.Button("生成语音", variant="primary", elem_id="run-btn")
-                gr.Markdown("服务会依次处理任务。较长台词需要更多时间，请耐心等待。")
-            with gr.Column(scale=2, min_width=300, elem_id="studio-output"):
-                gr.Markdown("## ③ 试听你的作品")
-                output = gr.Audio(label="生成的语音", type="numpy", interactive=False,
-                                  buttons=["download"], elem_id="output-audio")
-                status = gr.Textbox(label="生成状态", value="准备好了。可以直接生成示例，也可以先修改台词。",
-                    lines=5, interactive=False, elem_id="output-status")
-                gr.Markdown("生成完成后，点击播放按钮试听；点击播放器右上角的下载按钮保存音频。", elem_classes="studio-tip")
-                with gr.Accordion("使用小贴士", open=True):
-                    gr.Markdown("- **只想试一试？** 保持默认，直接点击「生成语音」。\n"
-                                "- **想固定声音？** 展开「参考音色」，上传音频后等待自动识别原文。\n"
-                                "- **台词没有读完？** 在高级设置中提高生成长度上限，或拆成更短的段落。\n"
-                                "- **多人对话？** 检查人数与 [S1]～[S5] 标记是否一致。")
-        # Presets update the panels themselves; only user edits need this event.
+                                example_buttons = [gr.Button(name, size="sm", min_width=0) for name in EXAMPLES]
+                            speaker_count = gr.Radio([(f"{n} 人", n) for n in range(1, 6)], value=2, label="角色人数")
+                            dialogue = gr.Textbox(value=EXAMPLES["双人对话"][1], label="台词",
+                                lines=7, placeholder="[S1]你好！\n[S2]很高兴见到你。",
+                                info="用 [S1]、[S2] 标记角色。加载示例会重置已选音色。", elem_id="dialogue")
+                            script_meta = gr.Markdown(script_summary(EXAMPLES["双人对话"][1]), elem_id="script-meta")
+                        with gr.Column(elem_classes="surface"):
+                            gr.Markdown("## 02  角色与声音\n先选声音，点击播放器试听；也可以使用自己的录音。")
+                            refs, prompts, panels, sources, asr_statuses, languages, retries = [], [], [], [], [], [], []
+                            voice_selects, voice_names, save_buttons, previews, rights = [], [], [], [], []
+                            for idx in range(1, 6):
+                                with gr.Column(visible=idx <= 2, elem_classes="role-card") as panel:
+                                    gr.HTML(f'<div class="role-title">角色 {idx} · [S{idx}]</div>')
+                                    voice_selects.append(gr.Dropdown(current_voice_choices(), value="",
+                                        label=f"角色 {idx} 的音色", filterable=True))
+                                    previews.append(gr.HTML(preview_voice(""), elem_id=f"voice-preview-{idx}"))
+                                    with gr.Accordion("使用自己的录音 / 编辑参考原文", open=False):
+                                        refs.append(gr.Audio(label=f"角色 {idx} 的参考录音", type="filepath",
+                                            sources=["upload"], buttons=["download"], elem_id=f"reference-{idx}"))
+                                        asr_statuses.append(gr.Markdown(IDLE_STATUS))
+                                        prompts.append(gr.Textbox(label=f"角色 {idx} 的参考原文", lines=2,
+                                            placeholder="上传录音后自动识别；选择内置音色时已自动填写。"))
+                                        with gr.Row():
+                                            languages.append(gr.Dropdown(list(LANGUAGES), value="自动识别", label="录音语言"))
+                                            retries.append(gr.Button("重新识别原文", size="sm"))
+                                        voice_names.append(gr.Textbox(label="保存音色名称", placeholder="例如：我的播客主持人"))
+                                        rights.append(gr.Checkbox(label="我拥有此录音的声音使用授权"))
+                                        save_buttons.append(gr.Button("保存到我的音色", size="sm"))
+                                    sources.append(gr.State(None))
+                                panels.append(panel)
+                            refresh_library = gr.Button("刷新音色列表", size="sm")
+                    with gr.Column(scale=4, min_width=300, elem_id="studio-output", elem_classes="surface"):
+                        gr.Markdown("## 03  生成作品")
+                        length = gr.Radio([("自动", 0), ("15 秒", 204), ("30 秒", 392), ("60 秒", 767)],
+                            value=0, label="最长时长", info="自动按台词估算；时长为上限，不会强行拉长。")
+                        run = gr.Button("生成语音", variant="primary", elem_id="run-btn")
+                        status = gr.Textbox(label="生成状态", value="准备就绪。写好台词、选好声音，即可开始。",
+                            lines=4, interactive=False, elem_id="output-status")
+                        output = gr.Audio(label="作品试听", type="numpy", interactive=False,
+                            buttons=["download"], elem_id="output-audio")
+                        gr.Markdown("成品会自动核对台词，并清理多余尾音。\n\n点击播放器的下载按钮，保存 WAV 后可用于 ComfyUI。")
+                        with gr.Accordion("高级设置", open=False):
+                            normalize = gr.Checkbox(value=True, label="自动整理台词格式")
+                            resample = gr.Checkbox(value=False, label="统一参考录音采样率")
+                            temperature = gr.Slider(.1, 2.0, value=1.1, step=.05, label="声音变化程度",
+                                info="影响随机性，不能指定情绪。")
+                            top_p = gr.Slider(.1, 1., value=.9, step=.01, label="候选概率范围")
+                            top_k = gr.Slider(1, 200, value=50, step=1, label="候选数量")
+                            repetition = gr.Slider(.8, 2., value=1.1, step=.05, label="重复抑制")
+            with gr.Tab("音色库 · 先听再选", id="library"):
+                gr.HTML('<div id="library-intro"><h2>找到适合角色的声音</h2><p>点击播放试听原声片段，再点击“使用这个音色”带回创作台。</p></div>')
+                library_status = gr.Markdown(voice_library_summary(), elem_id="library-status")
+                with gr.Row():
+                    search = gr.Textbox(label="搜索音色", placeholder="试试：女声、北方、长者…", scale=2)
+                    category = gr.Radio(["全部", "内置音色", "我的音色"], value="全部", label="音色来源")
+                target_role = gr.Radio([(f"角色 {n}", n) for n in range(1, 6)], value=1,
+                    label="将音色用于", info="如果选中未启用的角色，会自动增加角色人数。")
+                gallery = gr.HTML(library_gallery(), js_on_load="""
+                    element.addEventListener('click', event => {
+                        const button = event.target.closest('button[data-voice]');
+                        if (button) trigger('click', {voice_id: button.dataset.voice});
+                    });
+                """)
+                library_refresh = gr.Button("刷新音色库", size="sm")
+        gr.HTML('<footer id="studio-footer">基于 <a href="https://github.com/OpenMOSS/MOSS-TTSD" target="_blank" rel="noopener">OpenMOSS / MOSS-TTSD</a> · 内置参考音色来自 AISHELL-3（Apache-2.0）</footer>')
+
         speaker_count.input(fn=update_panels, inputs=[speaker_count], outputs=panels, queue=False)
+
+        def apply_gallery_voice(role, count, evt: gr.EventData):
+            role = max(1, min(5, int(role)))
+            voice_id = evt._data.get("voice_id", "")
+            voice = VoiceLibrary().get(voice_id)
+            if not voice:
+                raise gr.Error("音色不存在，请刷新音色库。")
+            chosen = select_library_voice(voice_id)
+            new_count = max(int(count), role)
+            # Each group of outputs is indexed by role; preserve every other role.
+            values = []
+            for value in (voice_id, *chosen):
+                values.extend(value if i == role - 1 else gr.skip() for i in range(5))
+            return (*values, new_count, *[gr.update(visible=i < new_count) for i in range(5)],
+                    gr.update(selected="create"))
+
+        applied = gallery.click(fn=apply_gallery_voice, inputs=[target_role, speaker_count],
+            outputs=[*voice_selects, *refs, *prompts, *sources, *asr_statuses, *languages,
+                     speaker_count, *panels, workspace_tabs], queue=False)
+        applied.then(fn=lambda *paths: paths, inputs=refs, outputs=sources, queue=False)
+        gr.on([dialogue.change, length.change], fn=script_summary, inputs=[dialogue, length],
+            outputs=[script_meta], queue=False)
         for ref, prompt, source, asr_status, language, retry in zip(
                 refs, prompts, sources, asr_statuses, languages, retries):
             result = gr.State(None)
@@ -277,26 +383,30 @@ def build_studio(args, generate, update_panels, max_tokens):
                 fn=apply_transcription, inputs=[ref, prompt, result],
                 outputs=[prompt, asr_status, source], queue=False, trigger_mode="multiple")
             prompt.input(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
-        for selector, ref, prompt, source, asr_status, language in zip(
-                voice_selects, refs, prompts, sources, asr_statuses, languages):
-            selection = selector.change(fn=select_library_voice, inputs=[selector],
+        for selector, ref, prompt, source, asr_status, language, preview in zip(
+                voice_selects, refs, prompts, sources, asr_statuses, languages, previews):
+            selection = selector.input(fn=select_library_voice, inputs=[selector],
                 outputs=[ref, prompt, source, asr_status, language], queue=False)
-            # Gradio copies returned files into its cache. Record that effective
-            # path after the Audio component has processed the library file.
             selection.then(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
+            selector.change(fn=preview_voice, inputs=[selector], outputs=[preview], queue=False)
             ref.input(fn=lambda: "", outputs=[selector], queue=False)
-        for selector, ref, prompt, source, asr_status, language, name, save in zip(
-                voice_selects, refs, prompts, sources, asr_statuses, languages, voice_names, save_buttons):
+        for selector, ref, prompt, source, asr_status, language, name, save, confirmed in zip(
+                voice_selects, refs, prompts, sources, asr_statuses, languages, voice_names, save_buttons, rights):
             saved = save.click(fn=save_library_voice,
-                inputs=[ref, prompt, name, language, rights_confirmed],
+                inputs=[ref, prompt, name, language, confirmed],
                 outputs=[asr_status, selector, library_status, ref, prompt, source, name], queue=False)
             saved.then(fn=lambda path: path, inputs=[ref], outputs=[source], queue=False)
-        refresh_library.click(fn=refresh_voice_library,
-            outputs=[*voice_selects, library_status], queue=False)
+            saved.then(fn=refresh_voice_library, outputs=[*voice_selects, library_status], queue=False)
+            saved.then(fn=library_gallery, inputs=[search, category], outputs=[gallery], queue=False)
+        gr.on([refresh_library.click, library_refresh.click], fn=refresh_voice_library,
+            outputs=[*voice_selects, library_status], queue=False).then(
+                fn=library_gallery, inputs=[search, category], outputs=[gallery], queue=False)
+        gr.on([search.change, category.change], fn=library_gallery, inputs=[search, category], outputs=[gallery], queue=False)
         for name, button in zip(EXAMPLES, example_buttons):
             button.click(fn=lambda name=name: select_example(name),
                 outputs=[speaker_count, dialogue, *refs, *prompts, *panels, *sources, *asr_statuses,
-                         *voice_selects], queue=False)
+                         *voice_selects], queue=False).then(fn=script_summary, inputs=[dialogue, length],
+                            outputs=[script_meta], queue=False)
 
         def generate_with_progress(count, *inputs, progress=gr.Progress()):
             inputs, source_paths = inputs[:-5], inputs[-5:]
@@ -305,16 +415,18 @@ def build_studio(args, generate, update_panels, max_tokens):
                 return None, "请检查参考音色：" + mismatch
             for idx in range(int(count)):
                 if inputs[idx] and not str(inputs[5 + idx] or "").strip():
-                    return None, f"请等待说话人 {idx + 1} 的原文识别完成；若识别失败，可重新识别或手动填写。"
-            progress(None, desc="正在生成语音，请稍候…")
+                    return None, f"请等待角色 {idx + 1} 的原文识别完成，再生成语音。"
+            progress(None, desc="正在配音并核对台词…")
             result = generate(count, *inputs, args.model_path, args.codec_path,
                               args.device, args.attn_implementation, args.dtype, args.codec_device)
             progress(1, desc="处理完成")
             return result
 
-        run.click(fn=lambda: (None, "任务已提交，正在排队或生成语音，请稍候…"),
-            outputs=[output, status], queue=False).then(fn=generate_with_progress,
+        submitted = run.click(fn=lambda: (None, "任务已提交，正在排队、配音或核对台词…", gr.update(interactive=False)),
+            outputs=[output, status, run], queue=False)
+        generation = submitted.then(fn=generate_with_progress,
             inputs=[speaker_count, *refs, *prompts, dialogue, normalize, resample,
                     temperature, top_p, top_k, repetition, length, *sources], outputs=[output, status],
             concurrency_limit=1, concurrency_id="speech-generation")
+        generation.then(fn=lambda: gr.update(interactive=True), outputs=[run], queue=False)
     return demo

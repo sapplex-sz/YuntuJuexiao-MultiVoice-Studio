@@ -2,6 +2,7 @@ import argparse
 import functools
 import re
 import time
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -12,13 +13,16 @@ import soundfile as sf
 from transformers import AutoModel, AutoProcessor
 
 from runtime_compat import configure_sdpa, resolve_attn_implementation, resolve_dtype
+from speech_guard import generation_budget
+from speech_verification import verify_generated_speech
+from voice_library import VoiceLibrary
 
 configure_sdpa()
 
 MODEL_PATH = "OpenMOSS-Team/MOSS-TTSD-v1.0"
 CODEC_MODEL_PATH = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
 DEFAULT_ATTN_IMPLEMENTATION = "auto"
-DEFAULT_MAX_NEW_TOKENS = 2000
+DEFAULT_MAX_NEW_TOKENS = 0  # Auto-size to the script, not a fixed audio duration.
 MIN_SPEAKERS = 1
 MAX_SPEAKERS = 5
 @functools.lru_cache(maxsize=1)
@@ -279,6 +283,8 @@ def run_inference(speaker_count: int, *all_inputs):
     if text_normalize:
         normalized_dialogue = normalize_text(normalized_dialogue)
     normalized_dialogue = _validate_dialogue_text(normalized_dialogue, speaker_count)
+    token_budget = generation_budget(normalized_dialogue, max_new_tokens)
+    logging.info("[Speech] start speakers=%d chars=%d budget=%d", speaker_count, len(normalized_dialogue), token_budget)
 
     cloned_speakers: list[int] = []
     loaded_clone_wavs: list[tuple[torch.Tensor, int]] = []
@@ -351,15 +357,20 @@ def run_inference(speaker_count: int, *all_inputs):
     attention_mask = batch["attention_mask"].to(torch_device)
 
     with torch.no_grad():
+        inference_started = time.monotonic()
         outputs = model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            max_new_tokens=int(max_new_tokens),
+            max_new_tokens=token_budget,
             audio_temperature=float(temperature),
             audio_top_p=float(top_p),
             audio_top_k=int(top_k),
             audio_repetition_penalty=float(repetition_penalty),
         )
+    inference_seconds = time.monotonic() - inference_started
+    generated_steps = int(outputs[0][1].shape[0]) - int(outputs[0][0])
+    hit_limit = generated_steps >= token_budget
+    logging.info("[Speech] inference=%.2fs steps=%d limit_reached=%s", inference_seconds, generated_steps, hit_limit)
 
     messages = processor.decode(outputs)
     if not messages or messages[0] is None:
@@ -378,14 +389,19 @@ def run_inference(speaker_count: int, *all_inputs):
     if audio_np.size == 0 or not np.isfinite(audio_np).all():
         raise RuntimeError("生成的音频无效，请重试并检查服务器日志。")
 
+    verification_started = time.monotonic()
+    audio_np, trimmed_seconds, match_score = verify_generated_speech(audio_np, sample_rate, normalized_dialogue)
+    logging.info("[Speech] verified=%.2fs trimmed=%.2fs match=%.3f", time.monotonic() - verification_started, trimmed_seconds, match_score)
+
     clone_summary = "自动生成音色" if not cloned_speakers else "、".join([f"说话人 {i}" for i in cloned_speakers])
     elapsed = time.monotonic() - started_at
     duration = audio_np.size / sample_rate
     status = (
-        f"生成完成，可以试听或下载。\n"
+        f"生成完成 · 台词核对通过{' · 已清理多余尾音' if trimmed_seconds > 0.5 else ''}\n"
         f"模式：{'参考音色续说' if cloned_speakers else '文字生成语音'} · {speaker_count} 位说话人\n"
         f"音频时长：{duration:.2f} 秒 · 本次耗时：{elapsed:.2f} 秒\n"
         f"参考音色：{clone_summary} · 采样率：{sample_rate / 1000:g} kHz"
+        + ("\n本次触及生成保护上限，已核对并保留有效台词。" if hit_limit else "")
     )
     return (sample_rate, audio_np), status
 
@@ -410,6 +426,7 @@ def build_demo(args: argparse.Namespace):
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="云途觉晓多人云音创作平台（基于 MOSS-TTSD）")
     parser.add_argument("--model_path", type=str, default=MODEL_PATH)
     parser.add_argument("--codec_path", type=str, default=CODEC_MODEL_PATH)
@@ -459,6 +476,7 @@ def main() -> None:
         css=CSS,
         head=LOCALE_HEAD,
         footer_links=[],
+        allowed_paths=[str(VoiceLibrary().audio_dir)],
     )
 
 
