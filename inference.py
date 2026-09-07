@@ -7,6 +7,8 @@ import torch
 import torch.multiprocessing as mp
 from transformers import AutoModel, AutoProcessor
 
+from runtime_compat import configure_sdpa, resolve_attn_implementation, resolve_dtype
+
 from generation_utils import (
     merge_rank_jsonl_files,
     prepare_sample,
@@ -23,7 +25,10 @@ DEFAULT_CODEC_PATH = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
 
 
 def _load_model_and_processor(args: argparse.Namespace, device: str):
-    dtype = torch.bfloat16 if device.startswith("cuda") else torch.float32
+    configure_sdpa()
+    dtype = resolve_dtype(torch.device(device), args.dtype)
+    attn = resolve_attn_implementation(args.attn_implementation, torch.device(device), dtype)
+    print(f"[INFO] device={device}, dtype={dtype}, attention={attn}", flush=True)
 
     processor = AutoProcessor.from_pretrained(
         args.model_path,
@@ -31,28 +36,15 @@ def _load_model_and_processor(args: argparse.Namespace, device: str):
         codec_path=args.codec_model_path,
     )
     if getattr(processor, "audio_tokenizer", None) is not None:
-        processor.audio_tokenizer = processor.audio_tokenizer.to(device)
+        processor.audio_tokenizer = processor.audio_tokenizer.to(device=args.codec_device or device, dtype=torch.float32)
         processor.audio_tokenizer.eval()
 
-    def _load_model_with_attn(attn_implementation: str):
-        return AutoModel.from_pretrained(
-            args.model_path,
-            trust_remote_code=True,
-            attn_implementation=attn_implementation,
-            torch_dtype=dtype,
-        ).to(device)
-
-    if device.startswith("cuda"):
-        try:
-            model = _load_model_with_attn("flash_attention_2")
-        except Exception as flash_exc:
-            print(
-                "[WARN] flash_attention_2 unavailable, fallback to sdpa. "
-                f"error={flash_exc}"
-            )
-            model = _load_model_with_attn("sdpa")
-    else:
-        model = _load_model_with_attn("sdpa")
+    model = AutoModel.from_pretrained(
+        args.model_path,
+        trust_remote_code=True,
+        attn_implementation=attn,
+        torch_dtype=dtype,
+    ).to(device)
 
     model.eval()
     return model, processor
@@ -183,6 +175,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model_path", type=str, default=str(DEFAULT_MODEL_PATH))
     parser.add_argument("--save_dir", type=str, required=True)
     parser.add_argument("--input_jsonl", type=str, required=True)
+    parser.add_argument("--dtype", choices=["auto", "float16", "bfloat16", "float32"], default="auto")
+    parser.add_argument("--attn_implementation", default="auto")
+    parser.add_argument("--codec_device", default=None)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument(
         "--mode",

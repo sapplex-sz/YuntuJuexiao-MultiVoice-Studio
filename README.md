@@ -1,448 +1,248 @@
 <div align="center">
-    <h1>
-    MOSS-TTSD: Text to Spoken Dialogue Generation
-    </h1>
-    <p>
-    <img src="asset/OpenMOSS_Logo.svg" alt="OpenMOSS Logo" width="300">
-    <p>
-    </p>
-    <a href="https://mosi.cn/models/moss-ttsd"><img src="https://img.shields.io/badge/Blog-Read%20More-green" alt="blog"></a>
-    <a href="https://arxiv.org/abs/2603.19739"><img src="https://img.shields.io/badge/Paper-2603.19739%20-red" alt="paper"></a>
-    <a href="https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20MOSS%20TTSD%20-v1.0-yellow" alt="MOSS-TTSD-v1.0"></a>
-     <a href="https://huggingface.co/spaces/OpenMOSS-Team/MOSS-TTSD"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Huggingface%20%20-space-orange" alt="MOSS-TTSD-space"></a>
-    <a href=""><img src="https://img.shields.io/badge/AI Stuidio-Coming%20Soon-blue" alt="AI Studio"></a>
-    <a href="https://github.com/"><img src="https://img.shields.io/badge/Python-3.10+-orange" alt="version"></a>
-    <a href="https://github.com/OpenMOSS/MOSS-TTSD"><img src="https://img.shields.io/badge/PyTorch-2.0+-brightgreen" alt="python"></a>
-    <a href="https://github.com/OpenMOSS/MOSS-TTSD"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="mit"></a>
-    <br>
+
+# 云途觉晓多人云音创作平台
+
+**面向中文创作者的本地化多人对话语音工作室**
+
+把带角色标记的脚本转换为自然、连贯的多人语音；支持参考音色、自动转写与 Tesla V100 部署。
+
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch 2.6](https://img.shields.io/badge/PyTorch-2.6-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![CUDA 12.4](https://img.shields.io/badge/CUDA-12.4-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![V100](https://img.shields.io/badge/Tesla_V100-FP16%20%2B%20SDPA-76B900)](./README_V100.md)
+[![MIT Extensions](https://img.shields.io/badge/云途觉晓改造-MIT-yellow.svg)](./LICENSE-MIT)
+[![Apache 2.0 Upstream](https://img.shields.io/badge/上游代码-Apache%202.0-blue.svg)](./LICENSE)
+
+[功能亮点](#功能亮点) · [快速开始](#快速开始) · [使用方法](#使用方法) · [V100 部署](./README_V100.md) · [原作者与致谢](#原作者与致谢)
 
 </div>
 
+> [!IMPORTANT]
+> 本项目是基于 [OpenMOSS/MOSS-TTSD](https://github.com/OpenMOSS/MOSS-TTSD) 的独立社区改造版本，并非 OpenMOSS 官方发行版。底层模型、原始推理代码及其著作权归原作者所有；本仓库完整保留原项目署名和 Apache 2.0 许可证。
 
-# MOSS-TTSD🪐
+## 项目简介
 
-[English](README.md) | [简体中文](README_zh.md)
+云途觉晓多人云音创作平台将 MOSS-TTSD 的多人对话生成能力封装成更适合中文用户的可视化工作流。用户可以直接编写单人朗读、双人访谈或最多五人的对话脚本，按需上传参考音频，随后在浏览器中生成、试听和下载作品。
 
-<!-- **MOSS-TTSD** is a long-form spoken dialogue generation model that enables highly expressive multi-party conversational speech synthesis across multiple languages. It supports continuous long-duration generation, flexible multi-speaker dialogue control, and state-of-the-art zero-shot voice cloning with only short reference audio. MOSS-TTSD is designed for real-world long-form content creation, including podcasts, audiobook, sports and esports commentary, dubbing, crosstalk, and entertainment scenarios. （about）-->
+本版本针对 Tesla V100 做了专门适配：避开 V100 不支持的 BF16 与 Flash Attention 2，使用经过验证的 FP16 + SDPA 路径，并可将主语言模型和音频编解码器拆分到两张显卡。参考音频原文由本地 Whisper 自动识别，音频不会发送到第三方服务。
 
+## 功能亮点
 
-## Overview
- <p align="center">
-    <img src="asset/ttsd.png" alt="alt text" width="330">
-  </p>
+| 能力 | 说明 |
+| --- | --- |
+| 全面简体中文 | 页面、参数说明、状态、校验错误及播放器辅助提示均提供简体中文 |
+| 1～5 人对话 | 使用 `[S1]`～`[S5]` 控制角色，支持单人朗读、访谈、播客和剧情对话 |
+| 参考音色续说 | 为不同角色分别上传短参考音频，保持角色音色的一致性 |
+| 自动识别参考原文 | 集成 Whisper Large-v3 Turbo；上传后自动转写为简体中文，支持手动修正和重新识别 |
+| V100 原生兼容 | 自动使用 FP16 + SDPA，避免 BF16 / Flash Attention 2 在 Compute Capability 7.0 上的不兼容问题 |
+| 双 GPU 分工 | 推荐主模型运行在 GPU 1、音频编解码器运行在 GPU 0，降低单卡显存压力 |
+| 本地与离线优先 | 权重准备完成后可离线运行；参考音频、转写和生成结果均留在服务器本地 |
+| 安全的任务队列 | 自动转写与语音生成共用串行队列，降低多个大模型同时争抢显存的风险 |
+| 可恢复模型下载 | 提供固定版本、分段续传及 SHA-256 校验工具，适合大文件下载不稳定的网络环境 |
+| Windows 服务化 | 提供启动脚本、计划任务和局域网防火墙配置示例，便于长期部署 |
 
-MOSS-TTSD is the long-form dialogue specialist within our open-source [MOSS‑TTS Family](https://github.com/OpenMOSS/MOSS-TTS). While foundational models typically prioritize high-fidelity single-speaker synthesis, MOSS-TTSD is architected to bridge the gap between isolated audio samples and cohesive, continuous human interaction.
-The model represents a paradigm shift from "text-to-speech" to "script-to-conversation." By prioritizing the flow and emotional nuances of multi-party engagement, MOSS-TTSD transforms static dialogue scripts into dynamic, expressive oral performances. It is designed to serve as a robust backbone for creators and developers who require a seamless transition between distinct speaker personas without sacrificing narrative continuity.
-Whether it is capturing the spontaneous energy of a live talk show or the structured complexity of a multilingual drama, MOSS-TTSD provides the stability and expressive depth necessary for professional-grade, long-form content creation in an open-source framework.
+底层 MOSS-TTSD v1.0 提供 20 种语言与长上下文能力；实际可生成长度和速度取决于显卡、生成参数及输入内容。当前社区版本重点验证了中文、多人对话、参考音色和 V100 推理链路。
 
+## 工作流程
 
-## Highlights
-- **From Monologue to Dialogue**: Unlike traditional TTS which optimizes for reading, MOSS-TTSD masters the rhythm of conversation. It supports 1 to 5 speakers with flexible control, handling natural turn-taking, overlapping speech patterns, and distinct persona maintenance.
-- **Extreme Long-Context Modeling**: moving beyond short-sentence generation, the model is architected for stability over long durations, supporting up to 60 minutes of coherent audio in a single session with consistent identity.
-- **Diverse Scenario Adaptation**: fine-tuned for high-variability scenarios including conversational media (AI Podcasts), dynamic commentary (Sports/Esports), and entertainment (Audiobooks, Dubbing, and Crosstalk).
-- **Multilingual & Zero-Shot Capabilities**: features state-of-the-art zero-shot voice cloning requiring only short reference audio, with robust cross-lingual performance across major languages including Chinese, English, Japanese, and European languages.
-
-
-## News 🚀
-- **[2026-03-18]** We support efficient end-to-end SGLang inference for MOSS-TTSD v1.0.
-- **[2026-03-06]** We added end-to-end SGLang inference support for MOSS-TTSD v0.7. For detailed instructions, please see the [legacy v0.7 docs](./legacy/v0.7/README.md).
-- **[2026-02-10]** MOSS-TTSD v1.0 is released! MOSS-TTSD v1.0 is officially released! This milestone version redefines long-form synthesis with 60-minute single-session context and support for multi-party interactions. It significantly expands multilingual capabilities and diverse usage scenarios.
-- **[2025-11-01]** MOSS-TTSD v0.7 is released! v0.7 significantly improves audio quality, voice cloning capability, and stability, adds support for 32 kHz high‑quality output, greatly extends single‑pass generation length (960s→1700s).
-- **[2025-09-09]** We supported SGLang inference engine to accelerate model inference by up to **16x**.
-- **[2025-08-25]** We released the 32khz version of XY-Tokenizer.
-- **[2025-08-12]** We add support for streaming inference in MOSS-TTSD v0.5.
-- **[2025-07-29]** We provide the SiliconFlow API interface and usage examples for MOSS-TTSD v0.5.
-- **[2025-07-16]** We open-source the fine-tuning code for MOSS-TTSD v0.5, supporting full-parameter fine-tuning, LoRA fine-tuning, and multi-node training.
-- **[2025-07-04]** MOSS-TTSD v0.5 is released! v0.5 has enhanced the accuracy of timbre switching, voice cloning capability, and model stability.
-- **[2025-06-20]** MOSS-TTSD v0 is released! Moreover, we provide a podcast generation pipeline named Podever, which can automatically convert PDF, URL, or long text files into high-quality podcasts.
-
-**Note:** For MOSS-TTSD v0.7 (including end-to-end SGLang inference), please refer to the [legacy v0.7 docs](./legacy/v0.7/README.md) for detailed instructions.
-
-## Supported Languages
-
-MOSS-TTSD currently supports **20 languages**:
-
-| Language | Code | Flag | Language | Code | Flag | Language | Code | Flag |
-|---|---|---|---|---|---|---|---|---|
-| Chinese | zh | 🇨🇳 | English | en | 🇺🇸 | German | de | 🇩🇪 |
-| Spanish | es | 🇪🇸 | French | fr | 🇫🇷 | Japanese | ja | 🇯🇵 |
-| Italian | it | 🇮🇹 | Hebrew | he | 🇮🇱 | Korean | ko | 🇰🇷 |
-| Russian | ru | 🇷🇺 | Persian (Farsi) | fa | 🇮🇷 | Arabic | ar | 🇸🇦 |
-| Polish | pl | 🇵🇱 | Portuguese | pt | 🇵🇹 | Czech | cs | 🇨🇿 |
-| Danish | da | 🇩🇰 | Swedish | sv | 🇸🇪 | Hungarian | hu | 🇭🇺 |
-| Greek | el | 🇬🇷 | Turkish | tr | 🇹🇷 |  |  |  |
-
-## Installation
-
-To run MOSS-TTSD, you need to install the required dependencies. You can use pip and conda to set up your environment.
-
-### Using conda
-
-```bash
-conda create -n moss_ttsd python=3.12 -y && conda activate moss_ttsd
-pip install -r requirements.txt
-pip install flash-attn
+```mermaid
+flowchart LR
+    A[中文对话脚本<br/>S1～S5] --> D[云途觉晓 Web 界面]
+    B[参考音频] --> C[本地 Whisper 自动转写]
+    C --> D
+    D --> E[MOSS-TTSD 主模型<br/>FP16 + SDPA]
+    E --> F[MOSS Audio Tokenizer]
+    F --> G[试听与下载 WAV]
 ```
 
-## Usage
+## 运行要求
 
-### Quick Start
+- Windows 10/11 或 Windows Server；核心代码也可在 Linux 上运行。
+- Python 3.11。
+- 支持 CUDA 12.4 的 NVIDIA 驱动。
+- 推荐两张 Tesla V100 32 GB；单张 32 GB 显卡可尝试把两个设备都设为 `cuda:0`。
+- 首次安装需要联网下载依赖和模型；模型权重不包含在本仓库中。
 
-MOSS-TTSD uses a **continuation** workflow: provide reference audio for each speaker, their transcripts as a prefix, and the dialogue text to generate. The model continues in each speaker's identity.
+## 快速开始
 
-```python
-import os
-from pathlib import Path
-import torch
-import soundfile as sf
-import torchaudio
-from transformers import AutoModel, AutoProcessor
+以下示例使用推荐目录 `C:\AI\MOSS-TTSD`。在 PowerShell 中执行：
 
-pretrained_model_name_or_path = "OpenMOSS-Team/MOSS-TTSD-v1.0"
-audio_tokenizer_name_or_path = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
-device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = torch.bfloat16 if device == "cuda" else torch.float32
+### 1. 获取代码并创建主环境
 
-processor = AutoProcessor.from_pretrained(
-    pretrained_model_name_or_path,
-    trust_remote_code=True,
-    codec_path=audio_tokenizer_name_or_path,
-)
-processor.audio_tokenizer = processor.audio_tokenizer.to(device)
-processor.audio_tokenizer.eval()
+```powershell
+New-Item -ItemType Directory -Force C:\AI | Out-Null
+git clone https://github.com/sapplex-sz/YuntuJuexiao-MultiVoice-Studio.git C:\AI\MOSS-TTSD
+Set-Location C:\AI\MOSS-TTSD
 
-attn_implementation = "flash_attention_2" if device == "cuda" else "sdpa"
-# If flash_attention_2 is unavailable on your environment, set this to "sdpa".
-model = AutoModel.from_pretrained(
-    pretrained_model_name_or_path,
-    trust_remote_code=True,
-    attn_implementation=attn_implementation,
-    torch_dtype=dtype,
-).to(device)
-model.eval()
-
-# --- Inputs ---
-
-prompt_audio_speaker1 = "asset/reference_02_s1.wav"
-prompt_audio_speaker2 = "asset/reference_02_s2.wav"
-prompt_text_speaker1 = "[S1] In short, we embarked on a mission to make America great again for all Americans."
-prompt_text_speaker2 = "[S2] NVIDIA reinvented computing for the first time after 60 years. In fact, Erwin at IBM knows quite well that the computer has largely been the same since the 60s."
-
-text_to_generate = """
-[S1] Listen, let's talk business. China. I'm hearing things.
-People are saying they're catching up. Fast. What's the real scoop?
-Their AI—is it a threat?
-[S2] Well, the pace of innovation there is extraordinary, honestly.
-They have the researchers, and they have the drive.
-[S1] Extraordinary? I don't like that. I want us to be extraordinary.
-Are they winning?
-[S2] I wouldn't say winning, but their progress is very promising.
-They are building massive clusters. They're very determined.
-[S1] Promising. There it is. I hate that word.
-When China is promising, it means we're losing.
-It's a disaster, Jensen. A total disaster.
-""".strip()
-
-# --- Load & resample audio ---
-
-target_sr = int(processor.model_config.sampling_rate)
-audio1, sr1 = sf.read(prompt_audio_speaker1, dtype="float32", always_2d=True)
-audio2, sr2 = sf.read(prompt_audio_speaker2, dtype="float32", always_2d=True)
-wav1 = torch.from_numpy(audio1).transpose(0, 1).contiguous()
-wav2 = torch.from_numpy(audio2).transpose(0, 1).contiguous()
-
-if wav1.shape[0] > 1:
-    wav1 = wav1.mean(dim=0, keepdim=True)
-if wav2.shape[0] > 1:
-    wav2 = wav2.mean(dim=0, keepdim=True)
-if sr1 != target_sr:
-    wav1 = torchaudio.functional.resample(wav1, sr1, target_sr)
-if sr2 != target_sr:
-    wav2 = torchaudio.functional.resample(wav2, sr2, target_sr)
-
-# --- Build conversation ---
-
-reference_audio_codes = processor.encode_audios_from_wav([wav1, wav2], sampling_rate=target_sr)
-concat_prompt_wav = torch.cat([wav1, wav2], dim=-1)
-prompt_audio = processor.encode_audios_from_wav([concat_prompt_wav], sampling_rate=target_sr)[0]
-
-full_text = f"{prompt_text_speaker1} {prompt_text_speaker2} {text_to_generate}"
-
-conversations = [
-    [
-        processor.build_user_message(
-            text=full_text,
-            reference=reference_audio_codes,
-        ),
-        processor.build_assistant_message(
-            audio_codes_list=[prompt_audio]
-        ),
-    ],
-]
-
-# --- Inference ---
-
-batch_size = 1
-
-save_dir = Path("output")
-save_dir.mkdir(exist_ok=True, parents=True)
-sample_idx = 0
-with torch.no_grad():
-    for start in range(0, len(conversations), batch_size):
-        batch_conversations = conversations[start : start + batch_size]
-        batch = processor(batch_conversations, mode="continuation")
-        input_ids = batch["input_ids"].to(device)
-        attention_mask = batch["attention_mask"].to(device)
-
-        outputs = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=2000,
-        )
-
-        for message in processor.decode(outputs):
-            for seg_idx, audio in enumerate(message.audio_codes_list):
-                sf.write(
-                    save_dir / f"{sample_idx}_{seg_idx}.wav",
-                    audio.detach().cpu().to(torch.float32).numpy(),
-                    int(processor.model_config.sampling_rate),
-                )
-            sample_idx += 1
-
-```
-### Batch Inference
-
-You can use the provided inference script for batch inference. The script automatically uses all visible GPUs. You can control GPU visibility via `export CUDA_VISIBLE_DEVICES=<device_ids>`.
-
-```bash
-python inference.py \
-  --model_path OpenMOSS-Team/MOSS-TTSD-v1.0 \
-  --codec_model_path OpenMOSS-Team/MOSS-Audio-Tokenizer \
-  --input_jsonl /path/to/input.jsonl \
-  --save_dir outputs \
-  --mode voice_clone_and_continuation \
-  --batch_size 1 \
-  --text_normalize
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-v100.txt
+.\.venv\Scripts\python.exe -m pip check
 ```
 
-Parameters:
+### 2. 下载固定版本的生成模型
 
-- `--model_path`: Path or HuggingFace model ID for MOSS-TTSD.
-- `--codec_model_path`: Path or HuggingFace model ID for MOSS-Audio-Tokenizer.
-- `--input_jsonl`: Path to the input JSONL file containing dialogue scripts and speaker prompts.
-- `--save_dir`: Directory where the generated audio files will be saved.
-- `--mode`: Inference mode. Choices: `generation`, `continuation`, `voice_clone`, `voice_clone_and_continuation`. We recommend using `voice_clone_and_continuation` for the best voice cloning experience.
-- `--batch_size`: Number of samples per batch (default: `1`).
-- `--max_new_tokens`: Maximum number of new tokens to generate. Controls total generated audio length (1s ≈ 12.5 tokens).
-- `--temperature`: Sampling temperature (default: `1.1`).
-- `--top_p`: Top-p sampling threshold (default: `0.9`).
-- `--top_k`: Top-k sampling threshold (default: `50`).
-- `--repetition_penalty`: Repetition penalty (default: `1.1`).
-- `--text_normalize`: Normalize input text (**recommended to always enable**).
-- `--sample_rate_normalize`: Resample prompt audios to the lowest sample rate before encoding (**recommended when using 2 or more speakers**).
-
-#### JSONL Input Format
-
-The input JSONL file should contain one JSON object per line. MOSS-TTSD supports 1 to 5 speakers per dialogue. Use `[S1]`–`[S5]` tags in the `text` field and provide corresponding `prompt_audio_speakerN` / `prompt_text_speakerN` pairs for each speaker:
-```json
-{
-  "base_path": "/path/to/audio/files",
-  "text": "[S1]Speaker 1 dialogue[S2]Speaker 2 dialogue[S3]...[S4]...[S5]...",
-  "prompt_audio_speaker1": "path/to/speaker1_audio.wav",
-  "prompt_text_speaker1": "Reference text for speaker 1 voice cloning",
-  "prompt_audio_speaker2": "path/to/speaker2_audio.wav",
-  "prompt_text_speaker2": "Reference text for speaker 2 voice cloning",
-  "...": "...",
-  "prompt_audio_speaker5": "path/to/speaker5_audio.wav",
-  "prompt_text_speaker5": "Reference text for speaker 5 voice cloning"
-}
+```powershell
+.\.venv\Scripts\python.exe scripts\download_models.py --root C:\AI\models
 ```
 
-### Accelerate Inference with SGLang
+如果大文件下载反复中断，可使用支持分段续传与校验的工具；详细参数见 [V100 部署说明](./README_V100.md)。
 
-MOSS-TTSD v1.0 supports running the fused MOSS-TTSD and MOSS-Audio-Tokenizer model with the deeply extended [SGLang](https://github.com/OpenMOSS/sglang) from OpenMOSS, enabling efficient inference for audio generation.
+### 3. 安装本地自动转写
 
-#### Environment Setup
+自动转写使用独立环境，不改动语音生成依赖：
 
-First, clone the SGLang branch compatible with MOSS-TTSD v1.0.
-
-```bash
-git clone https://github.com/OpenMOSS/sglang -b moss-ttsd-v1.0-with-cat
+```powershell
+py -3.11 -m venv .venv-asr
+.\.venv-asr\Scripts\python.exe -m pip install -r requirements-asr.lock.txt
+.\.venv-asr\Scripts\python.exe scripts\download_asr_model.py `
+  --output C:\AI\models\faster-whisper-large-v3-turbo
 ```
 
-##### Using venv
+### 4. 启动平台
 
-```bash
-python -m venv moss_ttsd_sglang
-source moss_ttsd_sglang/bin/activate
-pip install ./sglang/python[all]
+双 V100 推荐配置：
+
+```powershell
+.\.venv\Scripts\python.exe gradio_demo.py `
+  --model_path C:\AI\models\MOSS-TTSD-v1.0 `
+  --codec_path C:\AI\models\MOSS-Audio-Tokenizer `
+  --device cuda:1 `
+  --codec_device cuda:0 `
+  --dtype float16 `
+  --attn_implementation sdpa `
+  --host 0.0.0.0 `
+  --port 7863
 ```
 
-##### Using conda
+也可以在推荐目录下直接运行 `scripts\start-windows.cmd`。启动完成后访问：
 
-```bash
-conda create -n moss_ttsd_sglang python=3.12
-conda activate moss_ttsd_sglang
-pip install ./sglang/python[all]
+- 服务器本机：`http://127.0.0.1:7863/`
+- 同一局域网：`http://<服务器 IP>:7863/`
+
+> [!WARNING]
+> 当前 Web 界面没有内置账号认证。使用 `--host 0.0.0.0` 时，请只向可信局域网开放端口，或在前方增加带身份认证的反向代理；不要直接暴露到公网。
+
+## 使用方法
+
+### 直接生成
+
+1. 选择“单人朗读”“双人对话”或“播客开场”，也可以自己填写脚本。
+2. 每段台词以前缀标明角色：
+
+```text
+[S1]欢迎来到云途觉晓多人云音创作平台。
+[S2]今天我们用一段双人对话演示多人语音生成。
 ```
 
-#### End-to-End Inference Service
+3. 说话人数要与脚本中出现的角色一致。
+4. 点击“生成语音”，完成后在右侧试听或下载 WAV。
 
-##### Start the inference server
+### 使用参考音色
 
-Before starting the service, first download [MOSS-TTSD-v1.0](https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0) and [MOSS-Audio-Tokenizer](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer).
+1. 展开“参考音色”。
+2. 为相应说话人上传建议 5～30 秒、背景干净的单人人声音频。
+3. 等待系统自动识别原文；检查人名、数字和漏字，必要时手动修改。
+4. 在“对话台词”中填写要生成的新内容，然后生成语音。
 
-```bash
-git clone https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0
-git clone https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer
+自动识别支持自动判断语言，也可以指定中文或英语后点击“重新识别原文”。每次识别由短生命周期子进程完成，结束或超时后释放显存。有效时长为 0.5～120 秒；静音、损坏或过长音频会显示明确提示。
+
+## V100 适配说明
+
+Tesla V100 的 Compute Capability 为 7.0，不支持 BF16，也不适合当前依赖中的 Flash Attention 2 路径。本项目增加了以下兼容处理：
+
+- V100 默认使用 `torch.float16`。
+- 注意力实现默认回退到 PyTorch SDPA。
+- 音频编解码器保持 FP32，避免精度与算子兼容问题。
+- 主模型与编解码器支持通过 `--device`、`--codec_device` 分配到不同 GPU。
+- 提供 V100 冒烟测试、依赖锁定和 Windows 启动脚本。
+
+完整配置、批处理、服务注册与验证方式见 [README_V100.md](./README_V100.md)。
+
+## 测试
+
+不加载模型的回归测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Or:
+真实 V100 生成测试：
 
-```bash
-hf download OpenMOSS-Team/MOSS-TTSD-v1.0 --local-dir ./MOSS-TTSD-v1.0
-hf download OpenMOSS-Team/MOSS-Audio-Tokenizer --local-dir ./MOSS-Audio-Tokenizer
+```powershell
+.\.venv\Scripts\python.exe scripts\smoke_test_v100.py `
+  --model_path C:\AI\models\MOSS-TTSD-v1.0 `
+  --codec_path C:\AI\models\MOSS-Audio-Tokenizer `
+  --device cuda:1 `
+  --codec_device cuda:0
 ```
 
-After the download is complete, run the following command to fuse MOSS-TTSD v1.0 and MOSS-Audio-Tokenizer into a single-directory model that can be loaded by SGLang. After fusion, the model uses `voice_clone_and_continuation` inference mode by default:
+真实自动转写测试：
 
-```bash
-python scripts/fuse_moss_tts_delay_with_codec.py \
-  --model-path <path-to-moss-ttsd-v1.0> \
-  --codec-model-path <path-to-moss-audio-tokenizer> \
-  --save-path <path-to-fused-model>
+```powershell
+.\.venv\Scripts\python.exe scripts\smoke_test_asr.py `
+  --audio path\to\clear-chinese-reference.wav
 ```
 
-Then start the inference server with:
+## 项目结构
 
-```bash
-sglang serve \
-  --model-path <path-to-fused-model> \
-  --delay-pattern \
-  --trust-remote-code \
-  --port 30000 --host 0.0.0.0
+```text
+├── gradio_demo.py              # 推理入口、输入校验和中文状态
+├── studio_ui.py                # 简体中文创作界面
+├── reference_asr.py            # 自动转写调度、超时与错误处理
+├── runtime_compat.py           # V100 精度和注意力兼容策略
+├── requirements-v100*.txt      # V100 生成环境依赖
+├── requirements-asr*.txt       # 独立转写环境依赖
+├── scripts/
+│   ├── asr_worker.py           # 短生命周期 Whisper 转写进程
+│   ├── download_models*.py     # 固定版本与可恢复模型下载
+│   ├── start-windows.cmd       # 双 V100 启动入口
+│   └── smoke_test_*.py         # 真实模型验证
+└── tests/                      # 兼容性、下载、转写与界面回归测试
 ```
 
-> The first service startup may take longer due to compilation. Once you see `The server is fired up and ready to roll!`, the service is ready. The first request after startup may still trigger a lengthy compilation, which is expected behavior, so please be patient.
+## 安全与负责任使用
 
-> **Tip:** The end-to-end inference service may cause some VRAM fragmentation during runtime. If GPU memory is tight, we recommend using `--mem-fraction-static` when starting SGLang to reserve enough space for intermediate tensors.
+本项目用于合法的内容创作、教育、研究、辅助技术和已获授权的声音应用。请勿在未获得声音权利人明确授权的情况下克隆、模仿或传播他人声音，也不得用于冒充、诈骗、虚假信息、深度伪造或其他违法用途。生成内容发布时，建议清晰披露其为 AI 合成音频。
 
-##### Send a generation request
+## 原作者与致谢
 
-The service API is compatible with the standard multimodal text-generation interface. The `text` field in the returned JSON contains the base64-encoded WAV audio.
+本项目建立在 OpenMOSS 团队的研究和开源工作之上：
 
-The repository currently provides a minimal request example script:
+- 原始项目：[OpenMOSS/MOSS-TTSD](https://github.com/OpenMOSS/MOSS-TTSD)
+- 原始版权：Copyright 2025 OpenMOSS Team, Fudan University, SII and MOSI
+- 原始许可证：[Apache License 2.0](./LICENSE)
+- 原始论文：[MOSS-TTSD: Text to Spoken Dialogue Generation](https://arxiv.org/abs/2603.19739)
+- 原始作者：Yuqian Zhang、Donghua Yu、Zhengyuan Lin、Botian Jiang、Mingshu Chen、Yaozhou Jiang、Yiwei Zhao、Yiyang Zhang、Yucheng Yuan、Hanfu Chen、Kexin Huang、Jun Zhan、Cheng Chang、Zhaoye Fei、Shimin Li、Xiaogui Yang、Qinyuan Cheng、Xipeng Qiu
 
-```bash
-python scripts/request_sglang_generation.py
-```
+自动转写能力基于 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) 和 [CTranslate2](https://github.com/OpenNMT/CTranslate2)。感谢所有原作者和开源贡献者。
 
-This script will:
+### 论文引用
 
-- send requests to `http://localhost:30000/generate` by default
-- use `asset/reference_02_s1.wav` and `asset/reference_02_s2.wav` in the repository as reference audio
-- save the returned audio to `outputs/output.wav`
+如果你的研究使用了底层 MOSS-TTSD 模型，请引用原论文：
 
-If you need to change the reference audio, input text, sampling parameters, or server URL, you can directly edit the corresponding constants in `scripts/request_sglang_generation.py`.
-
-## Evaluation
-### Objective Evaluation(TTSD-eval)
-
-We introduce a robust evaluation framework leveraging MMS-FA for word-level alignment and utterance segmentation and wespeaker for embedding extraction to derive Speaker Attribution Accuracy (ACC) and Speaker Similarity (SIM). Please refer to [TTSD-eval](https://github.com/OpenMOSS/TTSD-eval) for the code and data.
-
-<br>
-
-| Model | ZH - SIM | ZH - ACC | ZH - WER | EN - SIM | EN - ACC | EN - WER |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Comparison with Open-Source Models** | | | | | | |
-| MOSS-TTSD | **0.7949** | **0.9587** | **0.0485** | **0.7326** | **0.9626** | 0.0988 |
-| MOSS-TTSD v0.7 | 0.7423 | 0.9391 | 0.0517 | 0.6743 | 0.9266 | 0.1612 |
-| Vibevoice 7B | 0.7590 | 0.9222 | 0.0570 | 0.7140 | 0.9554 | **0.0946** |
-| Vibevoice 1.5 B | 0.7415 | 0.8798 | 0.0818 | 0.6961 | 0.9353 | 0.1133 |
-| FireRedTTS2 | 0.7383 | 0.9022 | 0.0768 | - | - | - |
-| Higgs Audio V2 | - | - | - | 0.6860 | 0.9025 | 0.2131 |
-| **Comparison with Proprietary Models** | | | | | | |
-| Eleven V3 | 0.6970 | 0.9653 | **0.0363** | 0.6730 | 0.9498 | **0.0824** |
-| MOSS-TTSD (elevenlabs_voice) | **0.8165** | **0.9736** | 0.0391 | **0.7304** | **0.9565** | 0.1005 |
-| | | | | | | |
-| gemini-2.5-pro-preview-tts | - | - | - | 0.6786 | 0.9537 | **0.0859** |
-| gemini-2.5-flash-preview-tts | - | - | - | 0.7194 | 0.9511 | 0.0871 |
-| MOSS-TTSD (gemini_voice) | - | - | - | **0.7893** | **0.9655** | 0.0984 |
-| | | | | | | |
-| Doubao_Podcast | 0.8034 | 0.9606 | **0.0472** | - | - | - |
-| MOSS-TTSD (doubao_voice) | **0.8226** | **0.9630** | 0.0571 | - | - | - |
-
-### Subjective Evaluation
-For open-source models, annotators are asked to score each sample pair in terms of speaker attribution accuracy, voice similarity, prosody, and overall quality. Following the methodology of the LMSYS Chatbot Arena, we compute Elo ratings and confidence intervals for each dimension.
-![alt text](./asset/VS_Open-Source_Models.jpg)
-
-For closed-source models, annotators are only asked to choose the overall preferred one in each pair, and we compute the win rate accordingly.
-![alt text](./asset/VS_Proprietary_Models.png)
-
-## 📚 More Information
-###  🌟 Community Projects
-The MOSS-TTS community has been growing rapidly, and we’re delighted to showcase some outstanding projects and features built by community members:
-- **[ComfyUI-MOSS-TTS](https://github.com/richservo/comfyui-moss-tts)** A MOSS-TTS extension for ComfyUI.
-- **[MOSS-TTS-OpenAI](https://github.com/dasilva333/moss-tts-openai)** An OpenAI-compatible TTS API for MOSS-TTS.
-- **[AnyPod](https://github.com/rulerman/AnyPod)** A podcast generation tool using MOSS-TTS/MOSS-TTSD as the backend.
-
-## License
-
-MOSS-TTSD is released under the Apache 2.0 license.
-
-## Citation
-
-```
+```bibtex
 @misc{zhang2026mossttsdtextspokendialogue,
-      title={MOSS-TTSD: Text to Spoken Dialogue Generation}, 
-      author={Yuqian Zhang and Donghua Yu and Zhengyuan Lin and Botian Jiang and Mingshu Chen and Yaozhou Jiang and Yiwei Zhao and Yiyang Zhang and Yucheng Yuan and Hanfu Chen and Kexin Huang and Jun Zhan and Cheng Chang and Zhaoye Fei and Shimin Li and Xiaogui Yang and Qinyuan Cheng and Xipeng Qiu},
-      year={2026},
-      eprint={2603.19739},
-      archivePrefix={arXiv},
-      primaryClass={cs.SD},
-      url={https://arxiv.org/abs/2603.19739}, 
+  title        = {MOSS-TTSD: Text to Spoken Dialogue Generation},
+  author       = {Yuqian Zhang and Donghua Yu and Zhengyuan Lin and Botian Jiang
+                  and Mingshu Chen and Yaozhou Jiang and Yiwei Zhao and Yiyang Zhang
+                  and Yucheng Yuan and Hanfu Chen and Kexin Huang and Jun Zhan
+                  and Cheng Chang and Zhaoye Fei and Shimin Li and Xiaogui Yang
+                  and Qinyuan Cheng and Xipeng Qiu},
+  year         = {2026},
+  eprint       = {2603.19739},
+  archivePrefix= {arXiv},
+  primaryClass = {cs.SD},
+  url          = {https://arxiv.org/abs/2603.19739}
 }
 ```
 
-## ⚠️ Usage Disclaimer
+## 许可证
 
-This project provides an open-source spoken dialogue synthesis model intended for academic research, educational purposes, and legitimate applications such as AI podcast production, assistive technologies, and linguistic research. Users must not use this model for unauthorized voice cloning, impersonation, fraud, scams, deepfakes, or any illegal activities, and should ensure compliance with local laws and regulations while upholding ethical standards. The developers assume no liability for any misuse of this model and advocate for responsible AI development and use, encouraging the community to uphold safety and ethical principles in AI research and applications. If you have any concerns regarding ethics or misuse, please contact us.
+这是一个包含不同来源代码的衍生项目：
 
-<br>
+- 从 MOSS-TTSD 继承或修改的代码继续遵循 [Apache License 2.0](./LICENSE)，并保留原始版权和 [NOTICE](./NOTICE)。
+- 云途觉晓独立新增的界面、V100 部署、自动转写集成及其他原创扩展以 [MIT License](./LICENSE-MIT) 开源。
+- 模型权重不会随本仓库分发；下载和使用模型时还应遵守对应模型卡所列条款。
 
-# MOSS-TTS Family
-
-## Introduction
-
-<p align="center">
-  <img src="asset/moss_tts_family.jpeg" width="85%" />
-</p>
-
-When a single piece of audio needs to **sound like a real person**, **pronounce every word accurately**, **switch speaking styles across content**, **remain stable over tens of minutes**, and **support dialogue, role‑play, and real‑time interaction**, a single TTS model is often not enough. The **MOSS‑TTS Family** breaks the workflow into five production‑ready models that can be used independently or composed into a complete pipeline.
-
-- **MOSS‑TTS**: MOSS-TTS is the flagship production TTS foundation model, centered on high-fidelity zero-shot voice cloning with controllable long-form synthesis, pronunciation, and multilingual/code-switched speech. It serves as the core engine for scalable narration, dubbing, and voice-driven products.
-- **MOSS‑TTSD**: MOSS-TTSD is a production long-form dialogue model for expressive multi-speaker conversational audio at scale. It supports long-duration continuity, turn-taking control, and zero-shot voice cloning from short references for podcasts, audiobooks, commentary, dubbing, and entertainment dialogue.
-- **MOSS‑VoiceGenerator**: MOSS-VoiceGenerator is an open-source voice design model that creates speaker timbres directly from free-form text, without reference audio. It unifies timbre design, style control, and content synthesis, and can be used standalone or as a voice-design layer for downstream TTS.
-- **MOSS‑SoundEffect**: MOSS-SoundEffect is a high-fidelity text-to-sound model with broad category coverage and controllable duration for real content production. It generates stable audio from prompts across ambience, urban scenes, creatures, human actions, and music-like clips for film, games, interactive media, and data synthesis.
-- **MOSS‑TTS‑Realtime**: MOSS-TTS-Realtime is a context-aware, multi-turn streaming TTS model for real-time voice agents. By conditioning on dialogue history across both text and prior user acoustics, it delivers low-latency synthesis with coherent, consistent voice responses across turns.
-
-## Released Models
-
-| Model | Architecture | Size | Model Card | Hugging Face | ModelScope |
-|---|---|---:|---|---|---|
-| **MOSS-TTS** | `MossTTSDelay` | 8B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_tts_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-TTS) |
-|  | `MossTTSLocal` | 1.7B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_tts_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-TTS-Local-Transformer) |
-| **MOSS‑TTSD‑V1.0** | `MossTTSDelay` | 8B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_ttsd_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-TTSD-v1.0) |
-| **MOSS‑VoiceGenerator** | `MossTTSDelay` | 1.7B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_voice_generator_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-VoiceGenerator) |
-| **MOSS‑SoundEffect** | `MossTTSDelay` | 8B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_sound_effect_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-SoundEffect) |
-| **MOSS‑TTS‑Realtime** | `MossTTSRealtime` | 1.7B | [![Model Card](https://img.shields.io/badge/Model%20Card-View-blue?logo=markdown)](https://github.com/OpenMOSS/MOSS-TTS/blob/main/docs/moss_tts_realtime_model_card.md) | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Realtime) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-lightgrey?logo=modelscope)](https://modelscope.cn/models/openmoss/MOSS-TTS-Realtime) |
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=OpenMOSS%2FMOSS-TTSD&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTSD&type=date&theme=dark&legend=top-left&sealed_token=hQ1bVcj2xUep8d5QcqP_PpSXUZ48QsmWuy-jKxZ-bRGhjz0NDLEBO95Neri4mqWAv_iM_S4xRID4mpSbQQKRutotbFaHG1knaz-Q89qfQxgxKu41Mb0HYV_EQ962qyKWbNIU4CVwqRiESERWBOE1oCKKgtI5eFNIkLEqaCit3R2Ogcgp1EDyF3JarHY4" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTSD&type=date&legend=top-left&sealed_token=hQ1bVcj2xUep8d5QcqP_PpSXUZ48QsmWuy-jKxZ-bRGhjz0NDLEBO95Neri4mqWAv_iM_S4xRID4mpSbQQKRutotbFaHG1knaz-Q89qfQxgxKu41Mb0HYV_EQ962qyKWbNIU4CVwqRiESERWBOE1oCKKgtI5eFNIkLEqaCit3R2Ogcgp1EDyF3JarHY4" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTSD&type=date&legend=top-left&sealed_token=hQ1bVcj2xUep8d5QcqP_PpSXUZ48QsmWuy-jKxZ-bRGhjz0NDLEBO95Neri4mqWAv_iM_S4xRID4mpSbQQKRutotbFaHG1knaz-Q89qfQxgxKu41Mb0HYV_EQ962qyKWbNIU4CVwqRiESERWBOE1oCKKgtI5eFNIkLEqaCit3R2Ogcgp1EDyF3JarHY4" />
- </picture>
-</a>
+欢迎提交 Issue 与 Pull Request。参与贡献即表示你有权提交相关代码，并同意你的新增贡献按上述适用许可证发布。

@@ -1,3 +1,6 @@
+> [!NOTE]
+> 本文件保留上游 OpenMOSS/MOSS-TTSD 的原始中文说明，便于查阅底层模型资料。当前社区改造版本“云途觉晓多人云音创作平台”的安装、功能与许可证说明请参阅 [README.md](./README.md)。
+
 <div align="center">
     <h1>
     MOSS-TTSD：从文本到对话语音生成

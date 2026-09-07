@@ -1,0 +1,14 @@
+.venv/
+.venv-asr/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+output/
+outputs/
+setup-status.txt
+wheelhouse/
+models/
+*.partial
+*.download
+.weight-parts/

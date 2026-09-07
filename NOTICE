@@ -1,0 +1,21 @@
+云途觉晓多人云音创作平台
+Copyright 2026 songxin and 云途觉晓 contributors
+
+This product includes software derived from MOSS-TTSD:
+https://github.com/OpenMOSS/MOSS-TTSD
+
+Copyright 2025 OpenMOSS Team, Fudan University, SII and MOSI
+Licensed under the Apache License, Version 2.0.
+
+Upstream paper:
+MOSS-TTSD: Text to Spoken Dialogue Generation
+Yuqian Zhang, Donghua Yu, Zhengyuan Lin, Botian Jiang, Mingshu Chen,
+Yaozhou Jiang, Yiwei Zhao, Yiyang Zhang, Yucheng Yuan, Hanfu Chen,
+Kexin Huang, Jun Zhan, Cheng Chang, Zhaoye Fei, Shimin Li,
+Xiaogui Yang, Qinyuan Cheng, and Xipeng Qiu.
+https://arxiv.org/abs/2603.19739
+
+The local reference-audio transcription feature uses faster-whisper and
+CTranslate2. Their model and software licenses remain with their respective
+authors. Model weights are downloaded separately and are not distributed in
+this source repository.

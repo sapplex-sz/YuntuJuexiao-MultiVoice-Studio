@@ -1,0 +1,4 @@
+# Install into .venv-asr, not the speech generation environment.
+faster-whisper==1.2.1
+ctranslate2==4.6.0
+opencc-python-reimplemented==0.1.7

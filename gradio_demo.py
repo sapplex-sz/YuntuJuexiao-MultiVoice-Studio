@@ -1,6 +1,5 @@
 import argparse
 import functools
-import importlib.util
 import re
 import time
 from pathlib import Path
@@ -12,12 +11,9 @@ import torch
 import soundfile as sf
 from transformers import AutoModel, AutoProcessor
 
-# Disable the broken cuDNN SDPA backend
-torch.backends.cuda.enable_cudnn_sdp(False)
-# Keep these enabled as fallbacks
-torch.backends.cuda.enable_flash_sdp(True)
-torch.backends.cuda.enable_mem_efficient_sdp(True)
-torch.backends.cuda.enable_math_sdp(True)
+from runtime_compat import configure_sdpa, resolve_attn_implementation, resolve_dtype
+
+configure_sdpa()
 
 MODEL_PATH = "OpenMOSS-Team/MOSS-TTSD-v1.0"
 CODEC_MODEL_PATH = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
@@ -25,99 +21,10 @@ DEFAULT_ATTN_IMPLEMENTATION = "auto"
 DEFAULT_MAX_NEW_TOKENS = 2000
 MIN_SPEAKERS = 1
 MAX_SPEAKERS = 5
-PRESET_REF_AUDIO_S1 = "asset/reference_02_s1.wav"
-PRESET_REF_AUDIO_S2 = "asset/reference_02_s2.wav"
-PRESET_PROMPT_TEXT_S1 = (
-    "[S1] In short, we embarked on a mission to make America great again for all Americans."
-)
-PRESET_PROMPT_TEXT_S2 = (
-    "[S2] NVIDIA reinvented computing for the first time after 60 years. In fact, Erwin at IBM knows quite "
-    "well that the computer has largely been the same since the 60s."
-)
-PRESET_DIALOGUE_TEXT = (
-    "[S1] Listen, let's talk business. China. I'm hearing things.\n"
-    "People are saying they're catching up. Fast. What's the real scoop?\n"
-    "Their AI, is it a threat?\n"
-    "[S2] Well, the pace of innovation there is extraordinary, honestly.\n"
-    "They have the researchers, and they have the drive.\n"
-    "[S1] Extraordinary? I don't like that. I want us to be extraordinary.\n"
-    "Are they winning?\n"
-    "[S2] I wouldn't say winning, but their progress is very promising.\n"
-    "They are building massive clusters. They're very determined.\n"
-    "[S1] Promising. There it is. I hate that word.\n"
-    "When China is promising, it means we're losing.\n"
-    "It's a disaster, Jensen. A total disaster."
-)
-PRESET_EXAMPLES = [
-    {
-        "name": "Quick Start | reference_02_s1/s2",
-        "speaker_count": 2,
-        "s1_audio": PRESET_REF_AUDIO_S1,
-        "s1_prompt": PRESET_PROMPT_TEXT_S1,
-        "s2_audio": PRESET_REF_AUDIO_S2,
-        "s2_prompt": PRESET_PROMPT_TEXT_S2,
-        "dialogue_text": PRESET_DIALOGUE_TEXT,
-    }
-]
-PRESET_DISPLAY_FIELDS = [
-    ("Speaker Count", "speaker_count"),
-    ("S1 Reference Audio (Optional)", "s1_audio"),
-    ("S1 Prompt Text (Required with reference audio)", "s1_prompt"),
-    ("S2 Reference Audio (Optional)", "s2_audio"),
-    ("S2 Prompt Text (Required with reference audio)", "s2_prompt"),
-    ("Dialogue Text", "dialogue_text"),
-]
-
-
-def _build_preset_table_rows():
-    rows = []
-    row_to_preset = []
-    for preset_idx, preset in enumerate(PRESET_EXAMPLES):
-        for field_name, field_key in PRESET_DISPLAY_FIELDS:
-            value = str(preset.get(field_key, ""))
-            if field_key == "dialogue_text":
-                value = value.replace("\n", " ").strip()
-                if len(value) > 120:
-                    value = value[:120] + " ..."
-            rows.append([field_name, value])
-            row_to_preset.append(preset_idx)
-    return rows, row_to_preset
-
-
-PRESET_TABLE_ROWS, PRESET_TABLE_ROW_TO_PRESET = _build_preset_table_rows()
-
-
-def resolve_attn_implementation(requested: str, device: torch.device, dtype: torch.dtype) -> str | None:
-    requested_norm = (requested or "").strip().lower()
-
-    if requested_norm in {"none"}:
-        return None
-
-    if requested_norm not in {"", "auto"}:
-        return requested
-
-    # Prefer FlashAttention 2 when package + device conditions are met.
-    if (
-        device.type == "cuda"
-        and importlib.util.find_spec("flash_attn") is not None
-        and dtype in {torch.float16, torch.bfloat16}
-    ):
-        major, _ = torch.cuda.get_device_capability(device)
-        if major >= 8:
-            return "flash_attention_2"
-
-    # CUDA fallback: use PyTorch SDPA kernels.
-    if device.type == "cuda":
-        return "sdpa"
-
-    # CPU fallback.
-    return "eager"
-
-
 @functools.lru_cache(maxsize=1)
-def load_backend(model_path: str, codec_path: str, device_str: str, attn_implementation: str):
+def load_backend(model_path: str, codec_path: str, device_str: str, attn_implementation: str, dtype_str: str = "auto", codec_device_str: str | None = None):
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
-    dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+    dtype = resolve_dtype(device, dtype_str)
     resolved_attn_implementation = resolve_attn_implementation(
         requested=attn_implementation,
         device=device,
@@ -130,7 +37,7 @@ def load_backend(model_path: str, codec_path: str, device_str: str, attn_impleme
         codec_path=codec_path,
     )
     if hasattr(processor, "audio_tokenizer"):
-        processor.audio_tokenizer = processor.audio_tokenizer.to(device)
+        processor.audio_tokenizer = processor.audio_tokenizer.to(device=codec_device_str or device, dtype=torch.float32)
         processor.audio_tokenizer.eval()
 
     model_kwargs = {
@@ -152,7 +59,7 @@ def _resample_wav(wav: torch.Tensor, orig_sr: int, target_sr: int) -> torch.Tens
         return wav
     new_num_samples = int(round(wav.shape[-1] * float(target_sr) / float(orig_sr)))
     if new_num_samples <= 0:
-        raise ValueError(f"Invalid resample length from {orig_sr}Hz to {target_sr}Hz.")
+        raise ValueError(f"参考音频重采样失败（{orig_sr}Hz → {target_sr}Hz），请换一段音频重试。")
     return torch.nn.functional.interpolate(
         wav.unsqueeze(0),
         size=new_num_samples,
@@ -164,11 +71,11 @@ def _resample_wav(wav: torch.Tensor, orig_sr: int, target_sr: int) -> torch.Tens
 def _load_audio(audio_path: str) -> tuple[torch.Tensor, int]:
     path = Path(audio_path).expanduser()
     if not path.exists():
-        raise FileNotFoundError(f"Reference audio not found: {path}")
+        raise FileNotFoundError(f"找不到参考音频，请重新上传。")
 
     wav_np, sr = sf.read(path, dtype="float32", always_2d=True)
     if wav_np.size == 0:
-        raise ValueError(f"Reference audio is empty: {path}")
+        raise ValueError(f"参考音频为空，请上传包含人声的音频。")
 
     if wav_np.shape[1] > 1:
         wav_np = wav_np.mean(axis=1, keepdims=True)
@@ -238,16 +145,18 @@ def normalize_text(text: str) -> str:
 def _validate_dialogue_text(dialogue_text: str, speaker_count: int) -> str:
     text = (dialogue_text or "").strip()
     if not text:
-        raise ValueError("Please enter dialogue text.")
+        raise ValueError("请先填写要生成的台词。")
 
     tags = re.findall(r"\[S(\d+)\]", text)
     if not tags:
-        raise ValueError("Dialogue must include speaker tags like [S1], [S2], ...")
+        raise ValueError("请在台词前添加说话人标记，例如：[S1]你好。")
 
+    if not text.startswith("[S") or any(int(t) < 1 for t in tags):
+        raise ValueError("请从 [S1] 开始填写台词，说话人编号应为 1～5。")
     max_tag = max(int(t) for t in tags)
     if max_tag > speaker_count:
         raise ValueError(
-            f"Dialogue contains [S{max_tag}], but speaker count is set to {speaker_count}."
+            f"台词使用了 [S{max_tag}]，但当前只有 {speaker_count} 位说话人。请增加人数或修改标记。"
         )
     return text
 
@@ -256,59 +165,6 @@ def update_speaker_panels(speaker_count: int):
     count = int(speaker_count)
     count = max(MIN_SPEAKERS, min(MAX_SPEAKERS, count))
     return [gr.update(visible=(idx < count)) for idx in range(MAX_SPEAKERS)]
-
-
-def apply_preset_selection(evt: gr.SelectData):
-    if evt is None or evt.index is None:
-        return (
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            *[gr.update() for _ in range(MAX_SPEAKERS)],
-        )
-
-    if isinstance(evt.index, (tuple, list)):
-        row_idx = int(evt.index[0])
-    else:
-        row_idx = int(evt.index)
-
-    if row_idx < 0 or row_idx >= len(PRESET_TABLE_ROW_TO_PRESET):
-        return (
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            *[gr.update() for _ in range(MAX_SPEAKERS)],
-        )
-
-    preset_idx = PRESET_TABLE_ROW_TO_PRESET[row_idx]
-    if preset_idx < 0 or preset_idx >= len(PRESET_EXAMPLES):
-        return (
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            *[gr.update() for _ in range(MAX_SPEAKERS)],
-        )
-
-    preset = PRESET_EXAMPLES[preset_idx]
-    panel_updates = update_speaker_panels(int(preset["speaker_count"]))
-    return (
-        gr.update(value=int(preset["speaker_count"])),
-        gr.update(value=str(preset["s1_audio"])),
-        gr.update(value=str(preset["s1_prompt"])),
-        gr.update(value=str(preset["s2_audio"])),
-        gr.update(value=str(preset["s2_prompt"])),
-        gr.update(value=str(preset["dialogue_text"])),
-        *panel_updates,
-    )
 
 
 def _merge_consecutive_speaker_tags(text: str) -> str:
@@ -338,7 +194,7 @@ def _merge_consecutive_speaker_tags(text: str) -> str:
 def _normalize_prompt_text(prompt_text: str, speaker_id: int) -> str:
     text = (prompt_text or "").strip()
     if not text:
-        raise ValueError(f"S{speaker_id} prompt text is empty.")
+        raise ValueError(f"请填写说话人 {speaker_id} 的参考音频原文。")
 
     expected_tag = f"[S{speaker_id}]"
     if not text.lstrip().startswith(expected_tag):
@@ -394,6 +250,7 @@ def build_conversation(
     )
 
 
+@torch.inference_mode()
 def run_inference(speaker_count: int, *all_inputs):
     speaker_count = int(speaker_count)
     speaker_count = max(MIN_SPEAKERS, min(MAX_SPEAKERS, speaker_count))
@@ -401,7 +258,7 @@ def run_inference(speaker_count: int, *all_inputs):
     reference_audio_values = all_inputs[:MAX_SPEAKERS]
     prompt_text_values = all_inputs[MAX_SPEAKERS : 2 * MAX_SPEAKERS]
     dialogue_text = all_inputs[2 * MAX_SPEAKERS]
-    text_normalize, sample_rate_normalize, temperature, top_p, top_k, repetition_penalty, max_new_tokens, model_path, codec_path, device, attn_implementation = all_inputs[
+    text_normalize, sample_rate_normalize, temperature, top_p, top_k, repetition_penalty, max_new_tokens, model_path, codec_path, device, attn_implementation, dtype_str, codec_device_str = all_inputs[
         2 * MAX_SPEAKERS + 1 :
     ]
 
@@ -411,6 +268,8 @@ def run_inference(speaker_count: int, *all_inputs):
         codec_path=str(codec_path),
         device_str=str(device),
         attn_implementation=str(attn_implementation),
+        dtype_str=str(dtype_str),
+        codec_device_str=codec_device_str,
     )
 
     text_normalize = bool(text_normalize)
@@ -432,7 +291,7 @@ def run_inference(speaker_count: int, *all_inputs):
         has_prompt_text = bool(prompt_text)
         if has_reference != has_prompt_text:
             raise ValueError(
-                f"S{idx + 1} must provide both reference audio and prompt text together."
+                f"说话人 {idx + 1} 的参考音频与原文需要一起填写；不使用参考音色时，请同时留空。"
             )
 
         if has_reference:
@@ -504,7 +363,7 @@ def run_inference(speaker_count: int, *all_inputs):
 
     messages = processor.decode(outputs)
     if not messages or messages[0] is None:
-        raise RuntimeError("The model did not return a decodable audio result.")
+        raise RuntimeError("模型未返回可播放的音频，请缩短台词后重试。")
 
     audio = messages[0].audio_codes_list[0]
     if isinstance(audio, torch.Tensor):
@@ -516,272 +375,61 @@ def run_inference(speaker_count: int, *all_inputs):
         audio_np = audio_np.reshape(-1)
     audio_np = audio_np.astype(np.float32, copy=False)
 
-    clone_summary = "none" if not cloned_speakers else ",".join([f"S{i}" for i in cloned_speakers])
+    if audio_np.size == 0 or not np.isfinite(audio_np).all():
+        raise RuntimeError("生成的音频无效，请重试并检查服务器日志。")
+
+    clone_summary = "自动生成音色" if not cloned_speakers else "、".join([f"说话人 {i}" for i in cloned_speakers])
     elapsed = time.monotonic() - started_at
+    duration = audio_np.size / sample_rate
     status = (
-        f"Done | mode={mode_name} | speakers={speaker_count} | cloned={clone_summary} | elapsed={elapsed:.2f}s | "
-        f"text_normalize={text_normalize}, sample_rate_normalize={sample_rate_normalize} | "
-        f"max_new_tokens={int(max_new_tokens)}, "
-        f"audio_temperature={float(temperature):.2f}, audio_top_p={float(top_p):.2f}, "
-        f"audio_top_k={int(top_k)}, audio_repetition_penalty={float(repetition_penalty):.2f}"
+        f"生成完成，可以试听或下载。\n"
+        f"模式：{'参考音色续说' if cloned_speakers else '文字生成语音'} · {speaker_count} 位说话人\n"
+        f"音频时长：{duration:.2f} 秒 · 本次耗时：{elapsed:.2f} 秒\n"
+        f"参考音色：{clone_summary} · 采样率：{sample_rate / 1000:g} kHz"
     )
     return (sample_rate, audio_np), status
 
 
+def generate_for_ui(speaker_count, *inputs):
+    """Keep detailed failures in server logs and give the page actionable Chinese text."""
+    try:
+        return run_inference(speaker_count, *inputs)
+    except (ValueError, FileNotFoundError) as exc:
+        return None, f"请检查输入：{exc}"
+    except torch.cuda.OutOfMemoryError:
+        return None, "显存不足。请缩短台词或降低生成长度上限，确认其他任务未占用显卡后重试。"
+    except Exception:
+        import logging
+        logging.exception("Speech generation failed")
+        return None, "本次生成未成功。请确认参考音频可正常播放，然后重试；若仍失败，请检查服务器日志。"
+
+
 def build_demo(args: argparse.Namespace):
-    custom_css = """
-    :root {
-      --bg: #f6f7f8;
-      --panel: #ffffff;
-      --ink: #111418;
-      --muted: #4d5562;
-      --line: #e5e7eb;
-      --accent: #0f766e;
-    }
-    .gradio-container {
-      background: linear-gradient(180deg, #f7f8fa 0%, #f3f5f7 100%);
-      color: var(--ink);
-    }
-    .app-card {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--panel);
-      padding: 14px;
-    }
-    .app-title {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 6px;
-      letter-spacing: 0.2px;
-    }
-    .app-subtitle {
-      color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 8px;
-    }
-    #output_panel {
-      overflow: hidden !important;
-    }
-    #output_audio {
-      padding-bottom: 24px;
-      margin-bottom: 0;
-      overflow: hidden !important;
-    }
-    #output_audio > .wrap,
-    #output_audio .wrap,
-    #output_audio .audio-container,
-    #output_audio .block {
-      overflow: hidden !important;
-    }
-    #output_audio .audio-container {
-      padding-bottom: 10px;
-      min-height: 96px;
-    }
-    #output_audio_spacer {
-      height: 12px;
-    }
-    #output_status {
-      margin-top: 0;
-    }
-    #run-btn {
-      background: var(--accent);
-      border: none;
-    }
-    """
-
-    with gr.Blocks(title="MOSS-TTSD Demo", css=custom_css) as demo:
-        gr.Markdown(
-            """
-            <div class="app-card">
-              <div class="app-title">MOSS-TTSD</div>
-              <div class="app-subtitle">Multi-speaker dialogue synthesis with optional per-speaker voice cloning.</div>
-            </div>
-            """
-        )
-
-        speaker_panels: list[gr.Group] = []
-        speaker_refs = []
-        speaker_prompts = []
-
-        with gr.Row(equal_height=False):
-            with gr.Column(scale=3):
-                speaker_count = gr.Slider(
-                    minimum=MIN_SPEAKERS,
-                    maximum=MAX_SPEAKERS,
-                    step=1,
-                    value=2,
-                    label="Speaker Count",
-                    info="Default 2 speakers. Minimum 1, maximum 5.",
-                )
-
-                gr.Markdown("### Voice Cloning (Optional, placed first)")
-                gr.Markdown(
-                    "If you provide reference audio for a speaker, you must also provide that speaker's prompt text. "
-                    "Prompt text may omit [Sx]; the app will auto-prepend it."
-                )
-
-                for idx in range(1, MAX_SPEAKERS + 1):
-                    with gr.Group(visible=idx <= 2) as panel:
-                        speaker_ref = gr.Audio(
-                            label=f"S{idx} Reference Audio (Optional)",
-                            type="filepath",
-                        )
-                        speaker_prompt = gr.Textbox(
-                            label=f"S{idx} Prompt Text (Required with reference audio)",
-                            lines=2,
-                            placeholder=f"Example: [S{idx}] This is a prompt line for S{idx}.",
-                        )
-                    speaker_panels.append(panel)
-                    speaker_refs.append(speaker_ref)
-                    speaker_prompts.append(speaker_prompt)
-
-                gr.Markdown("### Multi-turn Dialogue")
-                dialogue_text = gr.Textbox(
-                    label="Dialogue Text",
-                    lines=12,
-                    placeholder=(
-                        "Use explicit tags in a single box, e.g.\n"
-                        "[S1] Hello.\n"
-                        "[S2] Hi, how are you?\n"
-                        "[S1] Great, let's continue."
-                    ),
-                )
-                gr.Markdown(
-                    "Without any reference audio, the model runs in generation mode. "
-                    "Once any reference audio is provided, the model switches to voice-clone continuation mode."
-                )
-
-                with gr.Accordion("Sampling Parameters (Audio)", open=True):
-                    gr.Markdown(
-                        "- `text_normalize`: Normalize input text (**recommended to always enable**).\n"
-                        "- `sample_rate_normalize`: Resample prompt audios to the lowest sample rate before encoding "
-                        "(**recommended when using 2 or more speakers**)."
-                    )
-                    text_normalize = gr.Checkbox(
-                        value=True,
-                        label="text_normalize",
-                    )
-                    sample_rate_normalize = gr.Checkbox(
-                        value=False,
-                        label="sample_rate_normalize",
-                    )
-                    temperature = gr.Slider(
-                        minimum=0.1,
-                        maximum=3.0,
-                        step=0.05,
-                        value=1.1,
-                        label="temperature",
-                    )
-                    top_p = gr.Slider(
-                        minimum=0.1,
-                        maximum=1.0,
-                        step=0.01,
-                        value=0.9,
-                        label="top_p",
-                    )
-                    top_k = gr.Slider(
-                        minimum=1,
-                        maximum=200,
-                        step=1,
-                        value=50,
-                        label="top_k",
-                    )
-                    repetition_penalty = gr.Slider(
-                        minimum=0.8,
-                        maximum=2.0,
-                        step=0.05,
-                        value=1.1,
-                        label="repetition_penalty",
-                    )
-                    max_new_tokens = gr.Slider(
-                        minimum=256,
-                        maximum=8192,
-                        step=128,
-                        value=DEFAULT_MAX_NEW_TOKENS,
-                        label="max_new_tokens",
-                    )
-
-                run_btn = gr.Button("Generate Dialogue Audio", variant="primary", elem_id="run-btn")
-
-            with gr.Column(scale=2, elem_id="output_panel"):
-                output_audio = gr.Audio(label="Output Audio", type="numpy", elem_id="output_audio")
-                gr.HTML("", elem_id="output_audio_spacer")
-                status = gr.Textbox(label="Status", lines=4, interactive=False, elem_id="output_status")
-                preset_examples = gr.Dataframe(
-                    headers=["Field", "Value (click any row to fill inputs)"],
-                    value=PRESET_TABLE_ROWS,
-                    datatype=["str", "str"],
-                    row_count=(len(PRESET_TABLE_ROWS), "fixed"),
-                    col_count=(2, "fixed"),
-                    interactive=False,
-                    wrap=True,
-                    label="Preset Examples",
-                )
-
-        speaker_count.change(
-            fn=update_speaker_panels,
-            inputs=[speaker_count],
-            outputs=speaker_panels,
-        )
-        preset_examples.select(
-            fn=apply_preset_selection,
-            outputs=[
-                speaker_count,
-                speaker_refs[0],
-                speaker_prompts[0],
-                speaker_refs[1],
-                speaker_prompts[1],
-                dialogue_text,
-                *speaker_panels,
-            ],
-        )
-
-        run_btn.click(
-            fn=lambda speaker_count, *inputs: run_inference(
-                speaker_count,
-                *inputs,
-                args.model_path,
-                args.codec_path,
-                args.device,
-                args.attn_implementation,
-            ),
-            inputs=[
-                speaker_count,
-                *speaker_refs,
-                *speaker_prompts,
-                dialogue_text,
-                text_normalize,
-                sample_rate_normalize,
-                temperature,
-                top_p,
-                top_k,
-                repetition_penalty,
-                max_new_tokens,
-            ],
-            outputs=[output_audio, status],
-        )
-    return demo
+    from studio_ui import build_studio
+    return build_studio(args, generate_for_ui, update_speaker_panels, DEFAULT_MAX_NEW_TOKENS)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MOSS-TTSD Gradio Demo")
+    parser = argparse.ArgumentParser(description="云途觉晓多人云音创作平台（基于 MOSS-TTSD）")
     parser.add_argument("--model_path", type=str, default=MODEL_PATH)
     parser.add_argument("--codec_path", type=str, default=CODEC_MODEL_PATH)
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--attn_implementation", type=str, default=DEFAULT_ATTN_IMPLEMENTATION)
+    parser.add_argument("--dtype", choices=["auto", "float16", "bfloat16", "float32"], default="auto")
+    parser.add_argument("--codec_device", default=None, help="Audio codec device; defaults to the model device.")
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7863)
     parser.add_argument("--share", action="store_true")
     args = parser.parse_args()
 
     runtime_device = torch.device(args.device if torch.cuda.is_available() else "cpu")
-    runtime_dtype = torch.bfloat16 if runtime_device.type == "cuda" else torch.float32
+    runtime_dtype = resolve_dtype(runtime_device, args.dtype)
     args.attn_implementation = resolve_attn_implementation(
         requested=args.attn_implementation,
         device=runtime_device,
         dtype=runtime_dtype,
     ) or "none"
-    print(f"[INFO] Using attn_implementation={args.attn_implementation}", flush=True)
+    print(f"[INFO] Using dtype={runtime_dtype}, attn_implementation={args.attn_implementation}, codec_device={args.codec_device or args.device}", flush=True)
 
     preload_started_at = time.monotonic()
     print(
@@ -794,17 +442,23 @@ def main() -> None:
         codec_path=args.codec_path,
         device_str=args.device,
         attn_implementation=args.attn_implementation,
+        dtype_str=args.dtype,
+        codec_device_str=args.codec_device,
     )
     print(
         f"[Startup] Backend preload finished in {time.monotonic() - preload_started_at:.2f}s",
         flush=True,
     )
 
+    from studio_ui import CSS, LOCALE_HEAD
     demo = build_demo(args)
-    demo.queue(default_concurrency_limit=2).launch(
+    demo.queue(default_concurrency_limit=1, max_size=8).launch(
         server_name=args.host,
         server_port=args.port,
         share=args.share,
+        css=CSS,
+        head=LOCALE_HEAD,
+        footer_links=[],
     )
 
 
